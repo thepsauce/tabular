@@ -10,7 +10,7 @@ common_flags="-g"
 # -Ibuild needs to be included so that gcc can find the .gch file
 compiler_flags="$common_flags -Werror -Wall -Wextra -Ibuild"
 linker_flags="$common_flags"
-linker_libs=""
+linker_libs="-lncurses"
 
 set -o xtrace
 

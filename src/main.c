@@ -7,11 +7,21 @@ void usage(int argc, char **argv)
 	fprintf(stderr, "usage: %s <file name or '-' for stdin> [options]\n",
 			argv[0]);
 	fprintf(stderr, "Options:\n");
-	fprintf(stderr, "-d\n");
-	fprintf(stderr, "-c <column name>\n");
+	fprintf(stderr, "--info -i		Show table information (size and column names)\n");
+	fprintf(stderr, "--column \"*\" --row \"*\"\n");
+	fprintf(stderr, "--all -a		Select all rows and columns\n");
+	fprintf(stderr, "--row -r		Select a row\n");
+	fprintf(stderr, "--column -c		Select a column\n");
+	fprintf(stderr, "--no-rows		Deselect all rows\n");
+	fprintf(stderr, "--no-columns		Deselect all columns\n");
+	fprintf(stderr, "--set-row		Select a single row\n");
+	fprintf(stderr, "--set-column		Select a single column\n");
+	fprintf(stderr, "--sum			Interpret all cells as numbers and take the sum\n");
+	fprintf(stderr, "--view -v		View all selected cells in a terminal user interface\n");
+	fprintf(stderr, "--print -p		Print all selected cells\n");
 }
 
-int cell_add(struct table *table, const char *cell, void *arg)
+int cell_add(Table *table, const char *cell, void *arg)
 {
 	int64_t n, m = 0, m2 = 0;
 
@@ -28,27 +38,18 @@ int cell_add(struct table *table, const char *cell, void *arg)
 
 int main(int argc, char **argv)
 {
-	enum {
-		OPT_INFO,
-		OPT_ROW,
-		OPT_COLUMN,
-		OPT_NO_ROWS,
-		OPT_NO_COLUMNS,
-		OPT_SET_ROW,
-		OPT_SET_COLUMN,
-		OPT_SUM,
-		OPT_PRINT,
-	};
 	static struct option longOptions[] = {
-		{ "info",	0, 0, 'i' },
-		{ "row", 	1, 0, 'r' },
-		{ "column", 	1, 0, 'c' },
-		{ "no-rows",	0, 0, 0 },
-		{ "no-columns", 0, 0, 0 },
-		{ "set-row", 1, 0, 0 },
-		{ "set-column",	1, 0, 0 },
-		{ "sum",	0, 0, 0 },
-		{ "print",	0, 0, 'p' },
+		[TABLE_OPERATION_ALL] = { "all", 0, 0, 'a' },
+		[TABLE_OPERATION_INFO] = { "info", 0, 0, 'i' },
+		[TABLE_OPERATION_ROW] = { "row", 1, 0, 'r' },
+		[TABLE_OPERATION_COLUMN] = { "column", 1, 0, 'c' },
+		[TABLE_OPERATION_NO_ROWS] = { "no-rows", 0, 0, 0 },
+		[TABLE_OPERATION_NO_COLUMNS] = { "no-columns", 0, 0, 0 },
+		[TABLE_OPERATION_SET_ROW] = { "set-row", 1, 0, 0 },
+		[TABLE_OPERATION_SET_COLUMN] = { "set-column", 1, 0, 0 },
+		[TABLE_OPERATION_SUM] = { "sum", 0, 0, 0 },
+		[TABLE_OPERATION_VIEW] = { "view", 0, 0, 'v' },
+		[TABLE_OPERATION_PRINT] = { "print", 0, 0, 'p' },
 		{ 0, 0, 0, 0 }
 	};
 	FILE *fp;
@@ -56,9 +57,9 @@ int main(int argc, char **argv)
 	size_t capacity = 0;
 	ssize_t count;
 	size_t lineIndex;
-	struct table table;
+	Table table;
 	char opt;
-	int option;
+	int optionIndex;
 
 	if (argc == 1) {
 		usage(argc, argv);
@@ -70,7 +71,8 @@ int main(int argc, char **argv)
 	} else {
 		fp = fopen(argv[1], "r");
 		if (fp == NULL) {
-			fprintf(stderr, "error: %s\n", strerror(errno));
+			fprintf(stderr, "error opening '%s': %s\n",
+					argv[1], strerror(errno));
 			return 1;
 		}
 	}
@@ -97,48 +99,18 @@ int main(int argc, char **argv)
 		goto err;
 
 	optind = 2;
-	while ((opt = getopt_long(argc, argv, "c:dpr:s", longOptions, &option))
+	while ((opt = getopt_long(argc, argv, "ac:ipr:s", longOptions, &optionIndex))
 			>= 0) {
 		switch (opt) {
 		case 0:
-			switch (option) {
-			case OPT_NO_ROWS:
-				table.numActiveRows = 0;
-				break;
-			case OPT_NO_COLUMNS:
-				table.numActiveColumns = 0;
-				break;
-			case OPT_SET_ROW:
-				table.numActiveRows = 0;
-				table_filterrows(&table, optarg);
-				break;
-			case OPT_SET_COLUMN:
-				table.numActiveColumns = 0;
-				table_filtercolumns(&table, optarg);
-				break;
-			}
+			table_dooperation(&table, optionIndex, optarg);
 			break;
-		case 'c':
-			table_filtercolumns(&table, optarg);
-			break;
-		case 'i':
-			table_dumpinfo(&table);
-			break;
-		case 'p':
-			table_printactivecells(&table);
-			break;
-		case 'r':
-			table_filterrows(&table, optarg);
-			break;
-		case 's': {
-			int64_t sums[2] = { 0, 0 };
-
-			table_foreach(&table, cell_add, sums);
-			sums[0] += sums[1] / 100;
-			sums[1] %= 100;
-			printf("%" PRId64 ",%" PRId64 "\n", sums[0], sums[1]);
-			break;
-		}
+		default:
+			for (size_t i = 0; i < ARRLEN(longOptions); i++)
+				if (longOptions[i].val == opt) {
+					table_dooperation(&table, i, optarg);
+					break;
+				}
 		}
 	}
 
