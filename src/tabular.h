@@ -1,9 +1,11 @@
 #ifndef TABULAR_H
 #define TABULAR_H
 
+#include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
 #include <inttypes.h>
+#include <locale.h>
 #include <ncurses.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -14,7 +16,19 @@
 
 #define ARRLEN(a) (sizeof(a)/sizeof*(a))
 
+#define MAX(a, b) ({ \
+	__auto_type _a = (a); \
+	__auto_type _b = (b); \
+	_a > _b ? _a : _b; \
+})
+#define MIN(a, b) ({ \
+	__auto_type _a = (a); \
+	__auto_type _b = (b); \
+	_a < _b ? _a : _b; \
+})
+
 typedef struct table {
+	const char *atText;
 	char **columnNames;
 	char ***cells;
 	size_t numRows;
@@ -26,6 +40,7 @@ typedef struct table {
 } Table;
 
 int table_init(Table *table);
+const char *table_strerror(Table *table);
 int table_parseline(Table *table, const char *line);
 void table_uninit(Table *table);
 
@@ -58,6 +73,7 @@ typedef struct table_view {
 	Table *table;
 	/* pad regions for columns */
 	WINDOW **pads;
+	size_t verticalColumnTracking;
 	struct {
 		size_t row;
 		size_t column;

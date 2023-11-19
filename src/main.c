@@ -21,21 +21,6 @@ void usage(int argc, char **argv)
 	fprintf(stderr, "--print -p		Print all selected cells\n");
 }
 
-int cell_add(Table *table, const char *cell, void *arg)
-{
-	int64_t n, m = 0, m2 = 0;
-
-	(void) table;
-	int64_t *const sums = (int64_t*) arg;
-	sscanf(cell, "%" PRId64 ",%" PRId64, &n, &m);
-	sscanf(cell, "%" PRId64 ".%" PRId64, &n, &m2);
-	if (m != m2 && m == 0)
-		m = m2;
-	sums[0] += n;
-	sums[1] += m;
-	return 0;
-}
-
 int main(int argc, char **argv)
 {
 	static struct option longOptions[] = {
@@ -61,6 +46,8 @@ int main(int argc, char **argv)
 	char opt;
 	int optionIndex;
 
+	setlocale(LC_ALL, "");
+
 	if (argc == 1) {
 		usage(argc, argv);
 		return 0;
@@ -80,11 +67,17 @@ int main(int argc, char **argv)
 	table_init(&table);
 	lineIndex = 0;
 	while ((count = getline(&line, &capacity, fp)) >= 0) {
-		if (count == 0)
+		if (count <= 1)
 			continue;
+		line[count - 1] = '\0';
 		if (table_parseline(&table, line) < 0) {
-			fprintf(stderr, "error at line no. %zu: %s\n",
+			fprintf(stderr, " at line no. %zu\n%s\n",
 					lineIndex + 1, line);
+			if (table.atText != NULL) {
+				for (char *s = line; s != table.atText; s++)
+					fprintf(stderr, "~");
+				fprintf(stderr, "^\n");
+			}
 			goto err;
 		}
 		lineIndex++;

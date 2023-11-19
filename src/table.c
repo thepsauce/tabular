@@ -6,30 +6,64 @@ int table_init(Table *table)
 	return 0;
 }
 
-static char *parse_string(const char *text, const char **pText)
+static void *table_realloc(Table *table, void *ptr, size_t newSize)
+{
+	ptr = realloc(ptr, newSize);
+	if (ptr != NULL)
+		return ptr;
+	fprintf(stderr, "error: could not allocate %zu bytes: %s",
+			newSize, strerror(errno));
+	table->atText = NULL;
+	return NULL;
+}
+
+static char *table_parse_string(Table *table, const char *text, const char **pText)
 {
 	char *str, *newStr;
 	size_t n;
 
-	if (*text != '\"')
-		return NULL;
 	str = malloc(16);
 	n = 0;
-	for (text++; *text != '\"'; text++) {
-		if (*text == '\0')
-			goto err;
-		newStr = realloc(str, n + 1);
-		if (newStr == NULL)
-			goto err;
-		str = newStr;
-		str[n++] = *text;
+	if (*text == '\"') {
+		for (text++; *text != '\"'; text++) {
+			if (*text == '\0') {
+				fprintf(stderr, "error: missing closing double"
+						"quotes");
+				table->atText = text;
+				goto err;
+			}
+			newStr = table_realloc(table, str, n + 1);
+			if (newStr == NULL)
+				goto err;
+			str = newStr;
+			str[n++] = *text;
+		}
+		text++;
+	} else {
+		for (; *text != '\0' && *text != '\t' &&
+				*text != ',' && *text != ';'; text++) {
+			newStr = table_realloc(table, str, n + 1);
+			if (newStr == NULL)
+				goto err;
+			str = newStr;
+			str[n++] = *text;
+		}
 	}
-	newStr = realloc(str, n + 1);
+
+	if (n > 0) {
+		size_t lead, trail;
+
+		for (lead = 0; isblank(str[lead]); lead++);
+		for (trail = 0; isblank(str[n - 1 - trail]); trail++);
+		n -= lead + trail;
+		memmove(str, str + lead, n);
+	}
+	newStr = table_realloc(table, str, n + 1);
 	if (newStr == NULL)
 		goto err;
 	str = newStr;
 	str[n] = '\0';
-	*pText = text + 1;
+	*pText = text;
 	return str;
 
 err:
@@ -37,7 +71,7 @@ err:
 	return NULL;
 }
 
-static char **parse_row(const char *text, size_t *pNumColumns)
+static char **table_parse_row(Table *table, const char *text, size_t *pNumColumns)
 {
 	char *str;
 	char **row;
@@ -47,18 +81,22 @@ static char **parse_row(const char *text, size_t *pNumColumns)
 	row = NULL;
 	numColumns = 0;
 	while (1) {
-		str = parse_string(text, &text);
+		str = table_parse_string(table, text, &text);
 		if (str == NULL)
 			goto err;
-		newRow = realloc(row, sizeof(*row) * (numColumns + 1));
+		newRow = table_realloc(table, row, sizeof(*row) *
+				(numColumns + 1));
 		if (newRow == NULL)
 			goto err;
 		row = newRow;
 		row[numColumns++] = str;
-		if (*text == '\n')
+		if (*text == '\0')
 			break;
-		if (*text != ';')
+		if (*text != ';' && *text != ',' && *text != '\t') {
+			fprintf(stderr, "error: missing separator");
+			table->atText = text;
 			goto err;
+		}
 		text++;
 	}
 	*pNumColumns = numColumns;
@@ -71,13 +109,13 @@ err:
 	return NULL;
 }
 
-int table_parseline(Table *table, const char *line)
+int table_parseline(Table *table, const char *text)
 {
 	char **row;
 	size_t numColumns;
 	char ***newCells;
 
-	row = parse_row(line, &numColumns);
+	row = table_parse_row(table, text, &numColumns);
 	if (row == NULL)
 		return -1;
 	if (table->columnNames == NULL) {
@@ -85,9 +123,13 @@ int table_parseline(Table *table, const char *line)
 		table->numColumns = numColumns;
 		return 0;
 	}
-	if (numColumns != table->numColumns)
+	if (numColumns != table->numColumns) {
+		fprintf(stderr, "error: different column count,"
+			"use --allow-different-columns to continue parsing"
+			"anyway");
 		goto err;
-	newCells = realloc(table->cells, sizeof(*table->cells) *
+	}
+	newCells = table_realloc(table, table->cells, sizeof(*table->cells) *
 			(table->numRows + 1));
 	if (newCells == NULL)
 		goto err;

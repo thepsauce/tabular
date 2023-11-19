@@ -3,6 +3,7 @@ headers=$(find src -name "*.h")
 objects=
 do_linking=false
 program=
+program_args=
 do_debug=false
 
 project_name=tabular
@@ -10,7 +11,7 @@ common_flags="-g"
 # -Ibuild needs to be included so that gcc can find the .gch file
 compiler_flags="$common_flags -Werror -Wall -Wextra -Ibuild"
 linker_flags="$common_flags"
-linker_libs="-lncurses"
+linker_libs="-lncursesw"
 
 set -o xtrace
 
@@ -68,6 +69,20 @@ do
 		[ ! -z "$program" ] && program=$project_name
 		do_debug=true
 		;;
+	--)
+		shift
+		while [ ! $# = 0 ]
+		do
+			if [[ $1 == *" "* ]]
+			then
+				program_args="$program_args \"$1\""
+			else
+				program_args="$program_args $1"
+			fi
+			shift
+		done
+		break
+		;;
 	esac
 	shift
 done
@@ -79,7 +94,7 @@ elif [ ! -z "$program" ]
 then
 	time_now=$(date "+%s %N")
 	read start_seconds start_nanoseconds <<< "$time_now"
-	./build/$program
+	./build/$program $program_args
 	exit_code=$?
 	time_now=$(date "+%s %N")
 	read end_seconds end_nanoseconds <<< "$time_now"
