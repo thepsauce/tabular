@@ -73,17 +73,19 @@ typedef struct table_view {
 	Table *table;
 	/* pad regions for columns */
 	WINDOW **pads;
-	size_t verticalColumnTracking;
 	struct {
 		size_t row;
 		size_t column;
 		size_t subColumn;
+		/* sub column scrolling */
+		size_t scroll;
+		size_t columnTracker;
+		WINDOW *cell;
 	} cursor;
 	struct {
 		size_t x;
 		size_t y;
 	} scroll;
-
 } TableView;
 
 int table_view_init(TableView *view, Table *table);

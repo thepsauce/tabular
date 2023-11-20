@@ -122,7 +122,7 @@ static void table_view_render(TableView *view)
 		ex = x + maxx - 1;
 		if (sx < 0)
 			sx = 0;
-		if (ex >= COLS)
+		if (ex > COLS - 1)
 			ex = COLS - 1;
 		if (i == view->cursor.column) {
 			columnsx = sx;
@@ -135,12 +135,18 @@ static void table_view_render(TableView *view)
 			mvaddch(y, x + maxx, '|');
 		pnoutrefresh(pad, 0, 0, 0, sx, 0, ex);
 		pnoutrefresh(pad, (int) view->scroll.y + 1, 0, 1, sx, maxy - 1, ex);
-		/* if this is not here, it doesn't render properly ¯\_(ツ)_/¯ */
+		/* if this is wasn't here, it wouldn't render properly ¯\_(ツ)_/¯ */
+		/* maybe ncurses behavior that I don't understand */
+		/* TODO: investigate */
 		refresh();
 	}
 
-	x = columnsx + view->cursor.subColumn;
 	y = view->cursor.row - view->scroll.y + 1;
+	if (y >= 1 && y < LINES && columnsx >= 0 && columnex < COLS) {
+		WINDOW *const pad = view->cursor.cell;
+		prefresh(pad, 0, view->cursor.scroll, y, columnsx, y, columnex);
+	}
+	x = columnsx + view->cursor.subColumn - view->cursor.scroll;
 	if (x < 0 || x > columnex || y < 1 || y >= LINES) {
 		curs_set(0);
 	} else {
@@ -165,6 +171,7 @@ static size_t string_endpoint(const char *str)
 static void table_view_movecursor(TableView *view, int c)
 {
 	char *cell;
+	size_t x, begx, maxx;
 
 	Table *const table = view->table;
 	switch (c) {
@@ -174,8 +181,9 @@ static void table_view_movecursor(TableView *view, int c)
 		view->cursor.row--;
 		cell = table->cells[table->activeRows[view->cursor.row]]
 			[table->activeColumns[view->cursor.column]];
-		view->cursor.subColumn = MIN(view->verticalColumnTracking,
+		view->cursor.subColumn = MIN(view->cursor.columnTracker,
 				string_endpoint(cell));
+		view->cursor.scroll = 0;
 		break;
 	case KEY_DOWN:
 		if (view->cursor.row + 1 == table->numActiveRows)
@@ -183,8 +191,9 @@ static void table_view_movecursor(TableView *view, int c)
 		view->cursor.row++;
 		cell = table->cells[table->activeRows[view->cursor.row]]
 			[table->activeColumns[view->cursor.column]];
-		view->cursor.subColumn = MIN(view->verticalColumnTracking,
+		view->cursor.subColumn = MIN(view->cursor.columnTracker,
 				string_endpoint(cell));
+		view->cursor.scroll = 0;
 		break;
 
 	case KEY_LEFT:
@@ -195,6 +204,7 @@ static void table_view_movecursor(TableView *view, int c)
 			cell = table->cells[table->activeRows[view->cursor.row]]
 				[table->activeColumns[view->cursor.column]];
 			view->cursor.subColumn = string_endpoint(cell);
+			view->cursor.scroll = 0;
 		} else {
 			cell = table->cells[table->activeRows[view->cursor.row]]
 				[table->activeColumns[view->cursor.column]];
@@ -203,23 +213,23 @@ static void table_view_movecursor(TableView *view, int c)
 				view->cursor.subColumn--;
 			while ((cell[view->cursor.subColumn] & 0xc0) == 0x80);
 		}
-		view->verticalColumnTracking = view->cursor.subColumn;
+		view->cursor.columnTracker = view->cursor.subColumn;
 		break;
 	case KEY_RIGHT:
 		cell = table->cells[table->activeRows[view->cursor.row]]
 			[table->activeColumns[view->cursor.column]];
-		/* >= because strlen(cell) might be 0 */
 		if (view->cursor.subColumn >= string_endpoint(cell)) {
 			if (view->cursor.column + 1 == table->numActiveColumns)
 				break;
 			view->cursor.column++;
+			view->cursor.scroll = 0;
 			view->cursor.subColumn = 0;
 		} else {
 			do
 				view->cursor.subColumn++;
 			while ((cell[view->cursor.subColumn] & 0xc0) == 0x80);
 		}
-		view->verticalColumnTracking = view->cursor.subColumn;
+		view->cursor.columnTracker = view->cursor.subColumn;
 		break;
 
 	case '\t':
@@ -232,7 +242,8 @@ static void table_view_movecursor(TableView *view, int c)
 			view->cursor.column++;
 		}
 		view->cursor.subColumn = 0;
-		view->verticalColumnTracking = 0;
+		view->cursor.columnTracker = 0;
+		view->cursor.scroll = 0;
 		break;
 	case KEY_BTAB:
 		if (view->cursor.column == 0) {
@@ -244,8 +255,18 @@ static void table_view_movecursor(TableView *view, int c)
 			view->cursor.column--;
 		}
 		view->cursor.subColumn = 0;
-		view->verticalColumnTracking = 0;
+		view->cursor.columnTracker = 0;
+		view->cursor.scroll = 0;
 		break;
+	case '+':
+		view->cursor.scroll++;
+		return;
+	case '-':
+		view->cursor.scroll--;
+		return;
+	case '=':
+		view->cursor.scroll = 0;
+		return;
 	default:
 		return;
 	}
@@ -254,6 +275,30 @@ static void table_view_movecursor(TableView *view, int c)
 	else if (view->cursor.row > view->scroll.y + LINES - 2)
 		view->scroll.y = view->cursor.row - (LINES - 2);
 
+	cell = table->cells[table->activeRows[view->cursor.row]]
+		[table->activeColumns[view->cursor.column]];
+	delwin(view->cursor.cell);
+	view->cursor.cell = newpad(1, strlen(cell));
+	waddstr(view->cursor.cell, cell);
+
+	maxx = getmaxx(view->pads[view->cursor.column]);
+	if (view->cursor.subColumn < view->cursor.scroll)
+		view->cursor.scroll = view->cursor.subColumn;
+	else if (view->cursor.subColumn > view->cursor.scroll + maxx - 1)
+		view->cursor.scroll = view->cursor.subColumn - (maxx - 1);
+
+	begx = 0;
+	for (size_t i = 0; i < view->cursor.column; i++) {
+		maxx = getmaxx(view->pads[i]);
+		begx += maxx + 1;
+	}
+	maxx = getmaxx(view->pads[view->cursor.column]);
+
+	x = begx + view->cursor.subColumn - view->cursor.scroll;
+	if (x < view->scroll.x)
+		view->scroll.x = x;
+	else if (x > view->scroll.x + COLS - 1)
+		view->scroll.x = x - (COLS - 1);
 }
 
 static void table_view_scroll(TableView *view, int c)
