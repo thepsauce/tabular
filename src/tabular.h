@@ -1,10 +1,13 @@
 #ifndef TABULAR_H
 #define TABULAR_H
 
+#define _XOPEN_SOURCE 700
+
 #include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <locale.h>
 #include <ncurses.h>
 #include <stdbool.h>
@@ -13,6 +16,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <wchar.h>
 
 #define ARRLEN(a) (sizeof(a)/sizeof*(a))
 
@@ -27,10 +31,12 @@
 	_a < _b ? _a : _b; \
 })
 
+#include "utf8.h"
+
 typedef struct table {
-	const char *atText;
-	char **columnNames;
-	char ***cells;
+	const Utf8 *atText;
+	Utf8 **columnNames;
+	Utf8 ***cells;
 	size_t numRows;
 	size_t numColumns;
 	size_t *activeRows;
@@ -60,10 +66,10 @@ enum table_operation {
 
 void table_dooperation(Table *table, enum table_operation operation, void *arg);
 void table_activateall(Table *table);
-void table_filterrows(Table *table, const char *filter);
-void table_filtercolumns(Table *table, const char *filter);
+void table_filterrows(Table *table, const Utf8 *filter);
+void table_filtercolumns(Table *table, const Utf8 *filter);
 int table_foreach(Table *table,
-		int (*proc)(Table *table, const char *cell, void *arg),
+		int (*proc)(Table *table, const Utf8 *cell, void *arg),
 		void *arg);
 void table_printactivecells(Table *table);
 int table_printbeautiful(Table *table);

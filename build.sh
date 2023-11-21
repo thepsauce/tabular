@@ -89,7 +89,11 @@ done
 
 if $do_debug
 then
-	gdb ./build/$program
+	if [ -z "$program" ]
+	then
+		program=$project_name
+	fi
+	gdb --args ./build/$program $program_args
 elif [ ! -z "$program" ]
 then
 	time_now=$(date "+%s %N")

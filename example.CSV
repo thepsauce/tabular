@@ -1,14 +1,16 @@
-"Product no.","Product name",Price,Sold,Stored
-1,"Apple",30 Euros,3328,425
-2,"Banana",25 Euros,2543,310
-3,"Orange",35 Euros,1789,210
-4,"Grapes",40 Euros,1200,150
-5,"Mango",50 Euros,980,120
-6,"Strawberry",15 Euros,4500,600
-7,"Pineapple",45 Euros,800,100
-8,"Watermelon",60 Euros,300,50
-9,"Cherry",20 Euros,2000,250
-10,"Kiwi",30 Euros,1500,180
-11,"桃",40 Euros,600,80
-12,"梨",25 Euros,800,120
-13,"葡萄",55 Euros,400,60
+"Product no.","Product name",Price,Sold,Stored,Super long title that is so long it doesn't fit or might fit depending on the size of the terminal. Is that clear?
+1,"Apple",30 Euros,3328,425,whatever
+2,"Banana",25 Euros,2543,310,hmmm
+14,"The magical fruit from the magical island of incognito which was acquired by a group of scavengers on the verge of transforming into a Deceptagon",20000 Euros,1,1,
+3,"Orange",35 Euros,1789,210,i have no clear purpose
+4,"Grapes",40 Euros,1200,150,see?
+5,"Mango",50 Euros,980,120,...
+6,"Strawberry",15 Euros,4500,600,
+7,"Pineapple",45 Euros,800,100,
+8,"Watermelon",60 Euros,300,50,
+9,"Cherry",20 Euros,2000,250,
+10,"Kiwi",30 Euros,1500,180,
+11,"桃",40 Euros,600,80,
+12,"梨",25 Euros,800,120,
+13,"葡萄",55 Euros,400,60,
+14,"The magical fruit from the magical island of incognito which was acquired by a group of scavengers on the verge of transforming into a Deceptagon",20000 Euros,1,1,

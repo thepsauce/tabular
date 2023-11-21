@@ -1,30 +1,6 @@
 #include "tabular.h"
 
-static bool string_match(const char *pattern, const char *text)
-{
-	while (*pattern != '\0' || *text != '\0') {
-		if (*pattern != *text) {
-			if (*pattern == '*') {
-				do
-					pattern++;
-				while (*pattern == '*');
-				if (*pattern == '\0')
-					return true;
-				while (*text != '\0') {
-					if (string_match(pattern, text))
-						return true;
-					text++;
-				}
-			}
-			return false;
-		}
-		pattern++;
-		text++;
-	}
-	return true;
-}
-
-static int cell_add(Table *table, const char *cell, void *arg)
+static int cell_add(Table *table, const Utf8 *cell, void *arg)
 {
 	int64_t n, m = 0, m2 = 0;
 
@@ -104,12 +80,12 @@ static inline void table_activaterow(Table *table, size_t row)
 	table->activeRows[table->numActiveRows++] = row;
 }
 
-void table_filterrows(Table *table, const char *filter)
+void table_filterrows(Table *table, const Utf8 *filter)
 {
 	for (size_t row = 0; row < table->numRows; row++)
 		for (size_t i = 0; i < table->numActiveColumns; i++) {
 			const size_t column = table->activeColumns[i];
-			if (!string_match(filter, table->cells[row][column]))
+			if (!utf8_match(filter, table->cells[row][column]))
 				continue;
 			table_activaterow(table, row);
 			break;
@@ -124,15 +100,15 @@ static inline void table_activatecolumn(Table *table, size_t column)
 	table->activeColumns[table->numActiveColumns++] = column;
 }
 
-void table_filtercolumns(Table *table, const char *filter)
+void table_filtercolumns(Table *table, const Utf8 *filter)
 {
 	for (size_t i = 0; i < table->numColumns; i++)
-		if (string_match(filter, table->columnNames[i]))
+		if (utf8_match(filter, table->columnNames[i]))
 			table_activatecolumn(table, i);
 }
 
 int table_foreach(Table *table,
-		int (*proc)(Table *table, const char *cell, void *arg),
+		int (*proc)(Table *table, const Utf8 *cell, void *arg),
 		void *arg)
 {
 	for (size_t i = 0; i < table->numActiveRows; i++) {
