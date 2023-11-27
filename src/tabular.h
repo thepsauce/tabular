@@ -10,6 +10,7 @@
 #include <limits.h>
 #include <locale.h>
 #include <ncurses.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,9 +70,12 @@ enum table_operation {
 	TABLE_OPERATION_APPEND,
 	TABLE_OPERATION_UNDO,
 	TABLE_OPERATION_REDO,
+
+	/* only used by table view */
+	TABLE_OPERATION_QUIT,
 };
 
-void table_dooperation(Table *table, enum table_operation operation, void *arg);
+void table_dooperation(Table *table, enum table_operation operation, const void *arg);
 
 void table_printinfo(Table *table);
 int table_printbeautiful(Table *table);
@@ -90,6 +94,7 @@ void table_redo(Table *table);
 enum table_view_mode {
 	TABLE_VIEW_NORMAL,
 	TABLE_VIEW_INSERT,
+	TABLE_VIEW_COMMAND,
 };
 
 typedef struct table_view {

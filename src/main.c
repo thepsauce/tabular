@@ -29,8 +29,6 @@ void usage(int argc, char **argv)
 	fprintf(stderr, "\n3. Modifying:\n");
 	fprintf(stderr, "--append -a		Append a row\n");
 	fprintf(stderr, "--delete -d		Delete all selected rows and columns\n");
-	fprintf(stderr, "--undo			Undo the last operation\n");
-	fprintf(stderr, "--redo			Redo the last operation\n");
 }
 
 int main(int argc, char **argv)

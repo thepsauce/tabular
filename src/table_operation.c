@@ -1,6 +1,6 @@
 #include "tabular.h"
 
-void table_dooperation(Table *table, enum table_operation operation, void *arg)
+void table_dooperation(Table *table, enum table_operation operation, const void *arg)
 {
 	switch (operation) {
 	case TABLE_OPERATION_INFO:
@@ -56,6 +56,8 @@ void table_dooperation(Table *table, enum table_operation operation, void *arg)
 	case TABLE_OPERATION_REDO:
 		table_redo(table);
 		break;
+	default:
+		/* table view only operation */
 	}
 }
 
@@ -102,7 +104,7 @@ int table_writeout(Table *table, const char *path)
 {
 	FILE *fp;
 
-	if (path != NULL) {
+	if (path != NULL && *path != '\0') {
 		fp = fopen(path, "w");
 		if (fp == NULL) {
 			fprintf(stderr, "unable to open '%s': %s\n",
