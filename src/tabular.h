@@ -51,42 +51,61 @@ int table_parseline(Table *table, const char *line);
 void table_uninit(Table *table);
 
 enum table_operation {
-	TABLE_OPERATION_ALL,
 	TABLE_OPERATION_INFO,
+	TABLE_OPERATION_VIEW,
+	TABLE_OPERATION_PRINT,
+	TABLE_OPERATION_OUTPUT,
+
+	TABLE_OPERATION_ALL,
+	TABLE_OPERATION_INVERT,
 	TABLE_OPERATION_ROW,
 	TABLE_OPERATION_COLUMN,
 	TABLE_OPERATION_NO_ROWS,
 	TABLE_OPERATION_NO_COLUMNS,
+	TABLE_OPERATION_NONE,
 	TABLE_OPERATION_SET_ROW,
 	TABLE_OPERATION_SET_COLUMN,
-	TABLE_OPERATION_SUM,
-	TABLE_OPERATION_VIEW,
-	TABLE_OPERATION_PRINT,
+
+	TABLE_OPERATION_APPEND,
+	TABLE_OPERATION_UNDO,
+	TABLE_OPERATION_REDO,
 };
 
 void table_dooperation(Table *table, enum table_operation operation, void *arg);
+
+void table_printinfo(Table *table);
+int table_printbeautiful(Table *table);
+void table_printactivecells(Table *table);
+int table_writeout(Table *table, const char *path);
+
 void table_activateall(Table *table);
+void table_invert(Table *table);
 void table_filterrows(Table *table, const Utf8 *filter);
 void table_filtercolumns(Table *table, const Utf8 *filter);
-int table_foreach(Table *table,
-		int (*proc)(Table *table, const Utf8 *cell, void *arg),
-		void *arg);
-void table_printactivecells(Table *table);
-int table_printbeautiful(Table *table);
-void table_dumpinfo(Table *table);
+
+void table_append(Table *table, const char *line);
+void table_undo(Table *table);
+void table_redo(Table *table);
+
+enum table_view_mode {
+	TABLE_VIEW_NORMAL,
+	TABLE_VIEW_INSERT,
+};
 
 typedef struct table_view {
 	Table *table;
-	/* pad regions for columns */
-	WINDOW **pads;
+	enum table_view_mode mode;
+	size_t *columnWidths;
 	struct {
 		size_t row;
 		size_t column;
-		size_t subColumn;
-		/* sub column scrolling */
+
+		Utf8 *text;
+		size_t index;
+		size_t indexTracker;
 		size_t scroll;
-		size_t columnTracker;
-		WINDOW *cell;
+		size_t lenText;
+		size_t capText;
 	} cursor;
 	struct {
 		size_t x;

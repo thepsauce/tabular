@@ -1,5 +1,16 @@
 #include "tabular.h"
 
+size_t utf8_determinate(Utf8 u)
+{
+	size_t det = 0;
+
+	if (!(u & 0x80))
+		return 1;
+	for (det = 0; u & 0x80; det++)
+		u <<= 1;
+	return det;
+}
+
 bool utf8_match(const Utf8 *pattern, const Utf8 *text)
 {
 	while (*pattern != '\0' || *text != '\0') {
@@ -44,7 +55,7 @@ size_t utf8_previouslength(const Utf8 *utf8)
 {
 	size_t length;
 
-	for (length = 1; (*(utf8 - length) & 0xc0) == 0x80; length--);
+	for (length = 1; (*(utf8 - length) & 0xc0) == 0x80; length++);
 	return length;
 }
 

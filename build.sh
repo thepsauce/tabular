@@ -3,7 +3,6 @@ headers=$(find src -name "*.h")
 objects=
 do_linking=false
 program=
-program_args=
 do_debug=false
 
 project_name=tabular
@@ -71,16 +70,6 @@ do
 		;;
 	--)
 		shift
-		while [ ! $# = 0 ]
-		do
-			if [[ $1 == *" "* ]]
-			then
-				program_args="$program_args \"$1\""
-			else
-				program_args="$program_args $1"
-			fi
-			shift
-		done
 		break
 		;;
 	esac
@@ -93,12 +82,12 @@ then
 	then
 		program=$project_name
 	fi
-	gdb --args ./build/$program $program_args
+	gdb --args ./build/$program "$@"
 elif [ ! -z "$program" ]
 then
 	time_now=$(date "+%s %N")
 	read start_seconds start_nanoseconds <<< "$time_now"
-	./build/$program $program_args
+	./build/$program "$@"
 	exit_code=$?
 	time_now=$(date "+%s %N")
 	read end_seconds end_nanoseconds <<< "$time_now"

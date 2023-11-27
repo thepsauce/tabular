@@ -114,6 +114,7 @@ int table_parseline(Table *table, const char *text)
 	char **row;
 	size_t numColumns;
 	char ***newCells;
+	size_t *newActiveRows;
 
 	row = table_parse_row(table, text, &numColumns);
 	if (row == NULL)
@@ -121,13 +122,33 @@ int table_parseline(Table *table, const char *text)
 	if (table->columnNames == NULL) {
 		table->columnNames = row;
 		table->numColumns = numColumns;
+		table->activeColumns = malloc(sizeof(*table->activeColumns) *
+				table->numColumns);
+		if (table->activeColumns == NULL)
+			goto err;
 		return 0;
 	}
-	if (numColumns != table->numColumns) {
-		fprintf(stderr, "error: different column count,"
-			"use --allow-different-columns to continue parsing"
-			"anyway");
+	if (numColumns > table->numColumns) {
+		fprintf(stderr, "error: too many columns (%zu vs %zu)",
+			numColumns, table->numColumns);
 		goto err;
+	}
+	if (numColumns < table->numColumns) {
+		char **paddedRow;
+
+		paddedRow = realloc(row, sizeof(*row) * table->numColumns);
+		if (paddedRow == NULL)
+			goto err;
+		row = paddedRow;
+		/* setting all to NULL to never get free(trashpointer) */
+		for (size_t i = numColumns; i < table->numColumns; i++)
+			row[i] = NULL;
+		for (size_t i = numColumns; i < table->numColumns; i++) {
+			row[i] = malloc(1);
+			if (row[i] == NULL)
+				goto err;
+			row[i][0] = '\0';
+		}
 	}
 	newCells = table_realloc(table, table->cells, sizeof(*table->cells) *
 			(table->numRows + 1));
@@ -135,6 +156,12 @@ int table_parseline(Table *table, const char *text)
 		goto err;
 	table->cells = newCells;
 	table->cells[table->numRows++] = row;
+
+	newActiveRows = realloc(table->activeRows,
+			sizeof(*table->activeRows) * table->numRows);
+	if (newActiveRows == NULL)
+		goto err;
+	table->activeRows = newActiveRows;
 	return 0;
 
 err:

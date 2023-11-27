@@ -4,36 +4,46 @@ int table_view_init(TableView *view, Table *table)
 {
 	memset(view, 0, sizeof(*view));
 	view->table = table;
+	if (table->numActiveRows > 0 && table->numActiveColumns > 0) {
+		char *const cell = table->cells[table->activeRows[0]]
+			[table->activeColumns[0]];
+		view->cursor.lenText = strlen(cell);
+		view->cursor.capText = MAX((size_t) 512, view->cursor.lenText);
+		view->cursor.text = malloc(view->cursor.capText);
+		if (view->cursor.text == NULL) {
+			view->cursor.capText = 0;
+			view->cursor.text = cell;
+		} else {
+			memcpy(view->cursor.text, cell, view->cursor.lenText);
+		}
+	}
 	return 0;
 }
 
-static int table_view_regeneratepads(TableView *view)
+static int table_view_updatecolumns(TableView *view)
 {
-	WINDOW **pads;
+	size_t *newColumnWidths;
 	struct fitting fit;
+
+	const int cols = COLS < 28 ? 28 : COLS;
+	const size_t mostMaxWidth = cols / 4 + ((cols / 4) & 1);
 
 	Table *const table = view->table;
 
-	const int cols = COLS < 28 ? 28 : COLS;
-	const int mostMaxWidth = cols / 4 + ((cols / 4) & 1);
-
-	pads = malloc(sizeof(*pads) * table->numActiveColumns);
-	if (pads == NULL)
+	newColumnWidths = realloc(view->columnWidths,
+			sizeof(*view->columnWidths) *
+				table->numActiveColumns);
+	if (newColumnWidths == NULL)
 		return -1;
+	view->columnWidths = newColumnWidths;
 
 	for (size_t i = 0; i < table->numActiveColumns; i++) {
 		size_t maxWidth;
-		size_t titleWidth;
-		WINDOW *pad;
 
-		/* Step 1: Compute the maximum width this column would need,
-		 * constricted by the mostMaxWidth.
-		 */
 		const size_t column = table->activeColumns[i];
 		const char *const name = table->columnNames[column];
 		utf8_getfitting(name, mostMaxWidth, &fit);
 		maxWidth = fit.width;
-		titleWidth = maxWidth;
 
 		for (size_t j = 0; j < table->numActiveRows; j++) {
 			const size_t row = table->activeRows[j];
@@ -41,115 +51,189 @@ static int table_view_regeneratepads(TableView *view)
 			utf8_getfitting(cell, mostMaxWidth, &fit);
 			if (fit.width > maxWidth)
 				maxWidth = fit.width;
+			if (maxWidth == mostMaxWidth)
+				break;
 		}
-
-		/* Step 2: Create the pad (or not if there was an
-		 * unexpected error.
-		 */
-		pad = newpad(table->numActiveRows + 1, maxWidth);
-		if (pad == NULL) {
-			while (i > 0) {
-				i--;
-				delwin(pads[i]);
-			}
-			free(pads);
-			return -1;
-		}
-		pads[i] = pad;
-
-		/* Step 3: Draw the whole column onto the pad. */
-		wattr_on(pad, A_REVERSE, NULL);
-		for (size_t x = 0; x < MIN(maxWidth, (size_t) INT_MAX); x++)
-			mvwaddch(pad, 0, (int) x, ' ');
-		wmove(pad, 0, (maxWidth - titleWidth) / 2);
-		if (utf8_getfitting(name, mostMaxWidth, &fit) != 0) {
-			waddnstr(pad, fit.start, fit.end - fit.start);
-			mvwaddstr(pad, 0, fit.width - 1, "…");
-		} else {
-			waddstr(pad, name);
-		}
-		wattr_off(pad, A_REVERSE, NULL);
-
-		for (size_t j = 0; j < table->numActiveRows; j++) {
-			const size_t row = table->activeRows[j];
-			const char *cell = table->cells[row][column];
-			wmove(pad, j + 1, 0);
-			if (utf8_getfitting(cell, mostMaxWidth, &fit) != 0) {
-				waddnstr(pad, fit.start, fit.end - fit.start);
-				mvwaddstr(pad, j + 1, fit.width - 1, "…");
-			} else {
-				waddstr(pad, cell);
-			}
-		}
+		view->columnWidths[i] = maxWidth;
 	}
-	if (view->pads != NULL) {
-		/* delete old pads */
-		for (size_t i = 0; i < table->numActiveColumns; i++)
-			delwin(view->pads[i]);
-		free(view->pads);
-	}
-	view->pads = pads;
 	return 0;
 }
 
 static void table_view_render(TableView *view)
 {
-	int x, y;
-	int sx, ex;
-	int columnsx, columnex;
-	int maxx, maxy;
+	struct fitting fit;
+	size_t x, y;
+	size_t sx;
+	size_t columnsx, columnex;
+	size_t width;
+	(void) columnsx;
+	(void) columnex;
 
 	Table *const table = view->table;
 
-	x = -view->scroll.x;
-	for (size_t i = 0; i < table->numActiveColumns; i++, x += maxx + 1) {
-		WINDOW *const pad = view->pads[i];
-		getmaxyx(pad, maxy, maxx);
-		if (maxy > LINES)
-			maxy = LINES;
-		sx = x;
-		ex = x + maxx - 1;
-		if (sx < 0)
-			sx = 0;
-		if (ex > COLS - 1)
-			ex = COLS - 1;
+	erase();
+	x = 0;
+	for (size_t i = 0; i < table->numActiveColumns;
+			x += view->columnWidths[i] + 1, i++) {
+		const size_t column = table->activeColumns[i];
+		const char *const title = table->columnNames[column];
+
+		width = view->columnWidths[i];
+		if (x + width < view->scroll.x) {
+			curs_set(0);
+			continue;
+		}
+
+		if (x < view->scroll.x) {
+			width -= view->scroll.x - sx;
+			sx = view->scroll.x;
+		} else {
+			sx = x;
+		}
 		if (i == view->cursor.column) {
 			columnsx = sx;
-			columnex = ex;
+			columnex = sx + width;
 		}
-		if (ex < 0)
+		if (sx >= view->scroll.x + COLS)
 			continue;
-		mvaddch(0, x + maxx, '|' | A_REVERSE);
-		for (y = 1; y < LINES; y++)
-			mvaddch(y, x + maxx, '|');
-		pnoutrefresh(pad, 0, 0, 0, sx, 0, ex);
-		pnoutrefresh(pad, (int) view->scroll.y + 1, 0, 1, sx, maxy - 1, ex);
-		/* if this is wasn't here, it wouldn't render properly ¯\_(ツ)_/¯ */
-		/* maybe ncurses behavior that I don't understand */
-		/* TODO: investigate */
-		refresh();
+		if (sx + width > COLS + view->scroll.x) {
+			width = COLS + view->scroll.x - sx;
+		}
+
+		attr_on(A_REVERSE, NULL);
+		for (size_t i = 0; i < width; i++)
+			mvaddch(0, (int) (i + sx - view->scroll.x), ' ');
+		if (utf8_getfitting(title, width, &fit) != 0) {
+			move(0, sx - view->scroll.x);
+			addnstr(fit.start, fit.end - fit.start);
+			mvaddstr(0, sx - view->scroll.x + fit.width - 1, "…");
+		} else {
+			move(0, sx - view->scroll.x + (width - fit.width) / 2);
+			addstr(title);
+		}
+
+		for (size_t j = view->scroll.y;
+				j < MIN(table->numActiveRows,
+					LINES - 2 + view->scroll.y); j++) {
+			const size_t row = table->activeRows[j];
+			const char *cell = table->cells[row][column];
+			if (i == view->cursor.column && j == view->cursor.row) {
+				attr_on(A_REVERSE, NULL);
+			} else {
+				attr_off(A_REVERSE, NULL);
+			}
+			move(j - view->scroll.y + 1, sx - view->scroll.x);
+			if (utf8_getfitting(cell, width, &fit) != 0) {
+				addnstr(fit.start, fit.end - fit.start);
+				mvaddstr(j - view->scroll.y + 1,
+					sx - view->scroll.x + fit.width - 1,
+					"…");
+			} else {
+				addstr(cell);
+			}
+		}
+
+		if (sx + width >= view->scroll.x + COLS) {
+			curs_set(0);
+			continue;
+		}
+		attr_off(A_REVERSE, NULL);
+		mvaddch(0, sx + width - view->scroll.x, '|' | A_REVERSE);
+		for (y = 0; y < MIN((size_t) LINES, table->numActiveRows);
+				y++)
+			mvaddch(y + 1, sx + width - view->scroll.x, '|');
 	}
 
-	y = view->cursor.row - view->scroll.y + 1;
-	if (y >= 1 && y < LINES && columnsx >= 0 && columnex < COLS) {
-		WINDOW *const pad = view->cursor.cell;
-		prefresh(pad, 0, view->cursor.scroll, y, columnsx, y, columnex);
-	}
-	x = columnsx + view->cursor.subColumn - view->cursor.scroll;
-	if (x < 0 || x > columnex || y < 1 || y >= LINES) {
+	mvaddnstr(LINES - 1, 0, view->cursor.text, view->cursor.index);
+	getyx(stdscr, y, x);
+	addnstr(&view->cursor.text[view->cursor.index],
+			view->cursor.lenText - view->cursor.index);
+	clrtoeol();
+
+	if (view->mode == TABLE_VIEW_NORMAL) {
 		curs_set(0);
 	} else {
-		move(y, x);
 		curs_set(1);
+		move(y, x);
+	}
+}
+
+static void table_view_updatecursor(TableView *view)
+{
+	size_t x, begx, maxx;
+
+	if (view->cursor.row < view->scroll.y)
+		view->scroll.y = view->cursor.row;
+	else if (view->cursor.row > view->scroll.y + LINES - 3)
+		view->scroll.y = view->cursor.row - (LINES - 3);
+
+	maxx = view->columnWidths[view->cursor.column];
+	if (view->cursor.index < view->cursor.scroll)
+		view->cursor.scroll = view->cursor.index;
+	else if (view->cursor.index > view->cursor.scroll + maxx - 1)
+		view->cursor.scroll = view->cursor.index - (maxx - 1);
+
+	begx = 0;
+	for (size_t i = 0; i < view->cursor.column; i++) {
+		maxx = view->columnWidths[i];
+		begx += maxx + 1;
+	}
+	maxx = view->columnWidths[view->cursor.column];
+
+	x = begx + view->cursor.index - view->cursor.scroll;
+	if (x < view->scroll.x)
+		view->scroll.x = x;
+	else if (x > view->scroll.x + COLS - 1)
+		view->scroll.x = x - (COLS - 1);
+}
+
+static void table_view_updatecell(TableView *view, size_t row, size_t column)
+{
+	Utf8 **pOldCell;
+	Utf8 *newCell;
+	Utf8 *cell;
+
+	Table *const table = view->table;
+	pOldCell = &table->cells[table->activeRows[row]]
+		[table->activeColumns[column]];
+	newCell = realloc(*pOldCell, view->cursor.lenText + 1);
+	if (newCell != NULL) {
+		*pOldCell = newCell;
+		memcpy(newCell, view->cursor.text, view->cursor.lenText);
+		newCell[view->cursor.lenText] = '\0';
+	}
+
+	if (row == view->cursor.row && column == view->cursor.column)
+		return;
+	cell = table->cells[table->activeRows[view->cursor.row]]
+		[table->activeColumns[view->cursor.column]];
+	view->cursor.lenText = strlen(cell);
+	if (view->cursor.capText < view->cursor.lenText) {
+		Utf8 *newText;
+
+		newText = realloc(view->cursor.text,
+				view->cursor.lenText);
+		if (newText == NULL) {
+			free(view->cursor.text);
+			view->cursor.text = cell;
+			view->cursor.capText = 0;
+		} else {
+			view->cursor.text = newText;
+			memcpy(view->cursor.text, cell, view->cursor.lenText);
+		}
+	} else {
+		memcpy(view->cursor.text, cell, view->cursor.lenText);
 	}
 }
 
 static void table_view_movecursor(TableView *view, int c)
 {
 	Utf8 *cell;
-	size_t x, begx, maxx;
+	size_t end;
 
 	Table *const table = view->table;
+	const size_t oldRow = view->cursor.row;
+	const size_t oldColumn = view->cursor.column;
 	switch (c) {
 	case KEY_UP:
 		if (view->cursor.row == 0)
@@ -157,8 +241,10 @@ static void table_view_movecursor(TableView *view, int c)
 		view->cursor.row--;
 		cell = table->cells[table->activeRows[view->cursor.row]]
 			[table->activeColumns[view->cursor.column]];
-		view->cursor.subColumn = MIN(view->cursor.columnTracker,
-				utf8_lastindex(cell));
+		end = strlen(cell);
+		if (view->mode == TABLE_VIEW_NORMAL)
+			end -= utf8_previouslength(&cell[end]);
+		view->cursor.index = MIN(view->cursor.indexTracker, end);
 		view->cursor.scroll = 0;
 		break;
 	case KEY_DOWN:
@@ -167,42 +253,45 @@ static void table_view_movecursor(TableView *view, int c)
 		view->cursor.row++;
 		cell = table->cells[table->activeRows[view->cursor.row]]
 			[table->activeColumns[view->cursor.column]];
-		view->cursor.subColumn = MIN(view->cursor.columnTracker,
-				utf8_lastindex(cell));
+		end = strlen(cell);
+		if (view->mode == TABLE_VIEW_NORMAL)
+			end -= utf8_previouslength(&cell[end]);
+		view->cursor.index = MIN(view->cursor.indexTracker, end);
 		view->cursor.scroll = 0;
 		break;
 
 	case KEY_LEFT:
-		if (view->cursor.subColumn == 0) {
+		if (view->mode == TABLE_VIEW_NORMAL) {
 			if (view->cursor.column == 0)
 				break;
 			view->cursor.column--;
 			cell = table->cells[table->activeRows[view->cursor.row]]
 				[table->activeColumns[view->cursor.column]];
-			view->cursor.subColumn = utf8_lastindex(cell);
+			end = strlen(cell);
+			if (view->mode == TABLE_VIEW_NORMAL)
+				end -= utf8_previouslength(&cell[end]);
+			view->cursor.index = end;
 			view->cursor.scroll = 0;
-		} else {
-			cell = table->cells[table->activeRows[view->cursor.row]]
-				[table->activeColumns[view->cursor.column]];
-			view->cursor.subColumn -= utf8_previouslength(
-					&cell[view->cursor.subColumn]);
+		} else if (view->cursor.index > 0) {
+			view->cursor.index -= utf8_previouslength(
+				&view->cursor.text[view->cursor.index]);
 		}
-		view->cursor.columnTracker = view->cursor.subColumn;
+		view->cursor.indexTracker = view->cursor.index;
 		break;
 	case KEY_RIGHT:
-		cell = table->cells[table->activeRows[view->cursor.row]]
-			[table->activeColumns[view->cursor.column]];
-		if (view->cursor.subColumn >= utf8_lastindex(cell)) {
+		end = view->cursor.lenText - utf8_previouslength(
+				&view->cursor.text[view->cursor.lenText]);
+		if (view->mode == TABLE_VIEW_NORMAL) {
 			if (view->cursor.column + 1 == table->numActiveColumns)
 				break;
 			view->cursor.column++;
 			view->cursor.scroll = 0;
-			view->cursor.subColumn = 0;
-		} else {
-			view->cursor.subColumn += utf8_nextlength(
-					&cell[view->cursor.subColumn]);
+			view->cursor.index = 0;
+		} else if (view->cursor.index <= end) {
+			view->cursor.index += utf8_nextlength(
+				&view->cursor.text[view->cursor.index]);
 		}
-		view->cursor.columnTracker = view->cursor.subColumn;
+		view->cursor.indexTracker = view->cursor.index;
 		break;
 
 	case '\t':
@@ -214,8 +303,8 @@ static void table_view_movecursor(TableView *view, int c)
 		} else {
 			view->cursor.column++;
 		}
-		view->cursor.subColumn = 0;
-		view->cursor.columnTracker = 0;
+		view->cursor.index = 0;
+		view->cursor.indexTracker = 0;
 		view->cursor.scroll = 0;
 		break;
 	case KEY_BTAB:
@@ -227,48 +316,93 @@ static void table_view_movecursor(TableView *view, int c)
 		} else {
 			view->cursor.column--;
 		}
-		view->cursor.subColumn = 0;
-		view->cursor.columnTracker = 0;
+		view->cursor.index = 0;
+		view->cursor.indexTracker = 0;
 		view->cursor.scroll = 0;
 		break;
 	default:
 		return;
 	}
-	if (view->cursor.row < view->scroll.y)
-		view->scroll.y = view->cursor.row;
-	else if (view->cursor.row > view->scroll.y + LINES - 2)
-		view->scroll.y = view->cursor.row - (LINES - 2);
 
-	cell = table->cells[table->activeRows[view->cursor.row]]
-		[table->activeColumns[view->cursor.column]];
-	delwin(view->cursor.cell);
-	view->cursor.cell = newpad(1, strlen(cell));
-	waddstr(view->cursor.cell, cell);
+	if (oldRow != view->cursor.row || oldColumn != view->cursor.column)
+		table_view_updatecell(view, oldRow, oldColumn);
+	table_view_updatecursor(view);
+}
 
-	maxx = getmaxx(view->pads[view->cursor.column]);
-	if (view->cursor.subColumn < view->cursor.scroll)
-		view->cursor.scroll = view->cursor.subColumn;
-	else if (view->cursor.subColumn > view->cursor.scroll + maxx - 1)
-		view->cursor.scroll = view->cursor.subColumn - (maxx - 1);
+static void table_view_type(TableView *view, int c)
+{
+	if (view->cursor.capText == 0)
+		return;
+	switch (c) {
+		size_t count;
 
-	begx = 0;
-	for (size_t i = 0; i < view->cursor.column; i++) {
-		maxx = getmaxx(view->pads[i]);
-		begx += maxx + 1;
+	case '\n':
+		table_view_updatecell(view, view->cursor.row,
+				view->cursor.column);
+		return;
+	case 0x7f:
+	case KEY_BACKSPACE:
+		if (view->cursor.index == 0)
+			return;
+		count = utf8_previouslength(
+				&view->cursor.text[view->cursor.index]);
+		view->cursor.index -= count;
+		memmove(&view->cursor.text[view->cursor.index],
+			&view->cursor.text[view->cursor.index + count],
+			view->cursor.lenText - count -
+				view->cursor.index);
+		view->cursor.lenText--;
+		goto update;
+	case KEY_DC:
+		if (view->cursor.index == view->cursor.lenText)
+			return;
+		count = utf8_nextlength(
+				&view->cursor.text[view->cursor.index]);
+		memmove(&view->cursor.text[view->cursor.index],
+			&view->cursor.text[view->cursor.index + count],
+			view->cursor.lenText - view->cursor.index);
+		view->cursor.lenText--;
+		goto update;
 	}
-	maxx = getmaxx(view->pads[view->cursor.column]);
+	if (c < 0x20 || c >= 0xff)
+		return;
+	if (view->cursor.capText < view->cursor.lenText + 1) {
+		Utf8 *newText;
 
-	x = begx + view->cursor.subColumn - view->cursor.scroll;
-	if (x < view->scroll.x)
-		view->scroll.x = x;
-	else if (x > view->scroll.x + COLS - 1)
-		view->scroll.x = x - (COLS - 1);
+		view->cursor.capText++;
+		newText = realloc(view->cursor.text, view->cursor.capText);
+		if (newText == NULL)
+			return;
+		view->cursor.text = newText;
+	}
+	memmove(&view->cursor.text[view->cursor.index + 1],
+		&view->cursor.text[view->cursor.index],
+		view->cursor.lenText - view->cursor.index);
+	view->cursor.text[view->cursor.index++] = c;
+	view->cursor.lenText++;
+
+	if (c & 0x80) {
+		size_t start;
+		size_t end;
+
+		/* make sure the utf8 sequence is complete */
+		for (start = end = view->cursor.index; start > 0; ) {
+			start--;
+			if (view->cursor.text[start] & 0xc0)
+				break;
+		}
+		if (end - start != utf8_determinate(view->cursor.text[start]))
+			return;
+	}
+
+update:
+	table_view_updatecursor(view);
 }
 
 static void table_view_scroll(TableView *view, int c)
 {
 	size_t x;
-	int maxx;
+	size_t maxx;
 	size_t w;
 	size_t i;
 
@@ -282,8 +416,7 @@ static void table_view_scroll(TableView *view, int c)
 	case 'H':
 		x = 0;
 		for (i = 0; i < table->numActiveColumns; i++) {
-			WINDOW *const pad = view->pads[i];
-			maxx = getmaxx(pad);
+			maxx = view->columnWidths[i];
 			if (x + maxx + 1 >= view->scroll.x)
 				break;
 			x += maxx + 1;
@@ -292,7 +425,7 @@ static void table_view_scroll(TableView *view, int c)
 		break;
 
 	case 'j':
-		if (view->scroll.y + (size_t) LINES >= table->numRows)
+		if (view->scroll.y + LINES - 1 >= table->numRows)
 			break;
 		view->scroll.y++;
 		break;
@@ -304,31 +437,44 @@ static void table_view_scroll(TableView *view, int c)
 
 	case 'l':
 		w = 0;
-		for (size_t i = 0; i < table->numActiveColumns; i++) {
-			WINDOW *const pad = view->pads[i];
-			w += getmaxx(pad) + 1;
-		}
-		if (view->scroll.x + (size_t) COLS >= w)
+		for (size_t i = 0; i < table->numActiveColumns; i++)
+			w += view->columnWidths[i] + 1;
+		if (view->scroll.x + COLS >= w)
 			break;
 		view->scroll.x++;
 		break;
 	case 'L':
 		x = 0;
 		for (i = 0; i < table->numActiveColumns; i++) {
-			WINDOW *const pad = view->pads[i];
-			maxx = getmaxx(pad);
+			maxx = view->columnWidths[i];
 			if (x > view->scroll.x)
 				break;
 			x += maxx + 1;
 		}
 		w = 0;
-		for (size_t i = 0; i < table->numActiveColumns; i++) {
-			WINDOW *const pad = view->pads[i];
-			w += getmaxx(pad) + 1;
-		}
-		if (x + (size_t) COLS >= w)
+		for (size_t i = 0; i < table->numActiveColumns; i++)
+			w += view->columnWidths[i] + 1;
+		if (x + COLS >= w)
 			x = w - COLS;
 		view->scroll.x = x;
+		break;
+	}
+}
+
+static void table_view_hotkey(TableView *view, int c)
+{
+	switch (c) {
+	case 'A':
+		table_parseline(view->table, "");
+		view->cursor.column = 0;
+		view->table->activeRows[view->table->numActiveRows++] =
+			view->table->numRows - 1;
+		view->cursor.row = view->table->numActiveRows - 1;
+		break;
+
+	case 'I':
+	case 'i':
+		view->mode = TABLE_VIEW_INSERT;
 		break;
 	}
 }
@@ -340,7 +486,7 @@ int table_view_show(TableView *view)
 	cbreak();
 	keypad(stdscr, true);
 
-	if (table_view_regeneratepads(view) < 0) {
+	if (table_view_updatecolumns(view) < 0) {
 		endwin();
 		return -1;
 	}
@@ -349,11 +495,19 @@ int table_view_show(TableView *view)
 	while (1) {
 		table_view_render(view);
 		const int c = getch();
-		if (c == 'q')
+		if (view->mode == TABLE_VIEW_NORMAL && c == 'q')
 			break;
 
 		table_view_movecursor(view, c);
-		table_view_scroll(view, c);
+		switch (view->mode) {
+		case TABLE_VIEW_INSERT:
+			table_view_type(view, c);
+			break;
+		case TABLE_VIEW_NORMAL:
+			table_view_scroll(view, c);
+			table_view_hotkey(view, c);
+			break;
+		}
 	}
 
 	endwin();
@@ -362,9 +516,5 @@ int table_view_show(TableView *view)
 
 void table_view_uninit(TableView *view)
 {
-	if (view->pads != NULL) {
-		for (size_t i = 0; i < view->table->numActiveColumns; i++)
-			delwin(view->pads[i]);
-		free(view->pads);
-	}
+	(void) view;
 }

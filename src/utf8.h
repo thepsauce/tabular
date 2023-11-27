@@ -1,5 +1,6 @@
 typedef char Utf8;
 
+size_t utf8_determinate(Utf8 u);
 bool utf8_match(const Utf8 *pattern, const Utf8 *text);
 size_t utf8_length(const Utf8 *utf8);
 Utf8 *utf8_end(const Utf8 *utf8);
