@@ -8,31 +8,37 @@ static void table_view_showerror(TableView *view, const char *fmt, ...)
 
 	endwin();
 
-	printf("An error occured!!\n");
+	fprintf(stderr, "An error occured!!\n");
 
 	va_start(l, fmt);
-	vprintf(fmt, l);
+	vfprintf(stderr, fmt, l);
 	va_end(l);
 
-	printf("\n\nPress enter to continue...\n");
+	fprintf(stderr, "\n\nPress enter to continue...\n");
 	while (getchar() != '\n');
 }
 
-
-static void *table_view_realloc(TableView *view, void *ptr, size_t newSize)
+static void *table_view_realloc(TableView *view, void *ptr, size_t newSize,
+		const char *file, int line)
 {
 	char choice;
 
 	(void) view;
+
+	if (newSize == 0)
+		return NULL;
 retry:
 	ptr = realloc(ptr, newSize);
 	if (ptr != NULL)
 		return ptr;
 	endwin();
-	printf(">>> failed allocating '%zu' bytes <<<\n", newSize);
-	printf("note: continuing should not crash or break the program but impact its usability\n");
+	fprintf(stderr, ">>> failed allocating '%zu' bytes at %s:%d<<<\n",
+			newSize, file, line);
+	/* RB80 */
+	fprintf(stderr, "note: continuing should not crash or break the program but impact its usability\n");
 	do {
-		printf("should the program continue (yn) or retry (r)? [ynr]\n");
+		/* RB80 */
+		fprintf(stderr, "should the program continue (yn) or retry (r)? [ynr]\n");
 		choice = getchar();
 		if (choice == 'y')
 			return NULL;
@@ -47,24 +53,49 @@ retry:
 	return NULL;
 }
 
+#define table_view_realloc(view, ptr, newSize) table_view_realloc(view, ptr, newSize, __FILE__, __LINE__);
+
+static void table_view_updatetext(TableView *view)
+{
+	const Utf8 *cell;
+
+	Table *const table = view->table;
+	if (table->numActiveRows == 0 ||
+			table->numActiveColumns == 0) {
+		cell = "";
+	} else {
+		cell = table->cells[table->activeRows[view->cursor.row]]
+			[table->activeColumns[view->cursor.column]];
+	}
+	view->cursor.lenText = strlen(cell);
+	if (view->cursor.capText < view->cursor.lenText) {
+		Utf8 *newText;
+
+		newText = table_view_realloc(view, view->cursor.text,
+				view->cursor.lenText);
+		if (newText == NULL) {
+			free(view->cursor.text);
+			/* as long as capText == 0 is true, the text can't
+			 * be edited
+			 */
+			view->cursor.text = (char*) cell;
+			view->cursor.capText = 0;
+		} else {
+			view->cursor.text = newText;
+			memcpy(view->cursor.text, cell, view->cursor.lenText);
+			view->cursor.capText = view->cursor.lenText;
+		}
+	} else {
+		memcpy(view->cursor.text, cell, view->cursor.lenText);
+	}
+	view->cursor.index = view->cursor.lenText;
+}
+
 int table_view_init(TableView *view, Table *table)
 {
 	memset(view, 0, sizeof(*view));
 	view->table = table;
-	if (table->numActiveRows > 0 && table->numActiveColumns > 0) {
-		char *const cell = table->cells[table->activeRows[0]]
-			[table->activeColumns[0]];
-		view->cursor.lenText = strlen(cell);
-		view->cursor.capText = MAX((size_t) 512, view->cursor.lenText);
-		view->cursor.text = table_view_realloc(view, NULL,
-				view->cursor.capText);
-		if (view->cursor.text == NULL) {
-			view->cursor.capText = 0;
-			view->cursor.text = cell;
-		} else {
-			memcpy(view->cursor.text, cell, view->cursor.lenText);
-		}
-	}
+	table_view_updatetext(view);
 	return 0;
 }
 
@@ -216,6 +247,12 @@ static void table_view_updatecursor(TableView *view)
 {
 	size_t x, begx, maxx;
 
+	if (view->table->numActiveColumns == 0) {
+		view->scroll.x = 0;
+		view->scroll.y = 0;
+		return;
+	}
+
 	if (view->cursor.row < view->scroll.y)
 		view->scroll.y = view->cursor.row;
 	else if (view->cursor.row > view->scroll.y + LINES - 3)
@@ -241,32 +278,6 @@ static void table_view_updatecursor(TableView *view)
 		view->scroll.x = x - (COLS - 1);
 }
 
-static void table_view_updatetext(TableView *view)
-{
-	Utf8 *cell;
-
-	Table *const table = view->table;
-	cell = table->cells[table->activeRows[view->cursor.row]]
-		[table->activeColumns[view->cursor.column]];
-	view->cursor.lenText = strlen(cell);
-	if (view->cursor.capText < view->cursor.lenText) {
-		Utf8 *newText;
-
-		newText = table_view_realloc(view, view->cursor.text,
-				view->cursor.lenText);
-		if (newText == NULL) {
-			free(view->cursor.text);
-			view->cursor.text = cell;
-			view->cursor.capText = 0;
-		} else {
-			view->cursor.text = newText;
-			memcpy(view->cursor.text, cell, view->cursor.lenText);
-		}
-	} else {
-		memcpy(view->cursor.text, cell, view->cursor.lenText);
-	}
-}
-
 static void table_view_interruptcommand(TableView *view)
 {
 	table_view_updatetext(view);
@@ -279,6 +290,8 @@ static void table_view_updatecell(TableView *view, size_t row, size_t column)
 	Utf8 *newCell;
 
 	Table *const table = view->table;
+	if (table->numActiveRows == 0 || table->numActiveColumns == 0)
+		return;
 	pOldCell = &table->cells[table->activeRows[row]]
 		[table->activeColumns[column]];
 	newCell = table_view_realloc(view, *pOldCell, view->cursor.lenText + 1);
@@ -309,7 +322,7 @@ static void table_view_movecursor(TableView *view, int c)
 		view->cursor.scroll = 0;
 		break;
 	case KEY_DOWN:
-		if (view->cursor.row + 1 == table->numActiveRows)
+		if (view->cursor.row + 1 >= table->numActiveRows)
 			break;
 		view->cursor.row++;
 		cell = table->cells[table->activeRows[view->cursor.row]]
@@ -356,7 +369,9 @@ static void table_view_movecursor(TableView *view, int c)
 		break;
 	case KEY_END:
 		if (view->mode == TABLE_VIEW_NORMAL)
-			view->cursor.column = table->numActiveColumns - 1;
+			view->cursor.column =
+				table->numActiveColumns == 0 ? 0 :
+					table->numActiveColumns - 1;
 		else
 			view->cursor.index = view->cursor.lenText;
 		break;
@@ -378,7 +393,11 @@ static void table_view_movecursor(TableView *view, int c)
 			if (view->cursor.row == 0)
 				break;
 			view->cursor.row--;
-			view->cursor.column = table->numActiveColumns - 1;
+			if (table->numActiveColumns == 0)
+				view->cursor.column = 0;
+			else
+				view->cursor.column =
+					table->numActiveColumns - 1;
 		} else {
 			view->cursor.column--;
 		}
@@ -401,108 +420,129 @@ static void table_view_movecursor(TableView *view, int c)
 	table_view_updatecursor(view);
 }
 
-static const struct table_view_command {
-	const char *name;
-	int arg;
-} table_view_commands[] = {
-	[TABLE_OPERATION_OUTPUT] = { "output", 2 },
-
-	[TABLE_OPERATION_ALL] = { "all", 0 },
-	[TABLE_OPERATION_INVERT] = { "invert", 0 },
-	[TABLE_OPERATION_ROW] = { "row", 1 },
-	[TABLE_OPERATION_COLUMN] = { "column", 1 },
-	[TABLE_OPERATION_NO_ROWS] = { "no-rows", 0 },
-	[TABLE_OPERATION_NO_COLUMNS] = { "no-columns", 0 },
-	[TABLE_OPERATION_NONE] = { "none", 0 },
-	[TABLE_OPERATION_SET_ROW] = { "set-row", 1 },
-	[TABLE_OPERATION_SET_COLUMN] = { "set-column", 1 },
-
-	[TABLE_OPERATION_APPEND] = { "append", 1 },
-
-	[TABLE_OPERATION_QUIT] = { "quit", 0 },
-};
-
-static void table_view_execute(TableView *view,
-	       const struct table_view_command *command,
-	       const char *arg)
+static inline int
+table_view_executecommand(TableView *view, const char *cmd)
 {
+	static const struct command {
+		const char *name;
+		int arg;
+	} commands[] = {
+		[TABLE_OPERATION_INFO] = { "info", 2 },
+		[TABLE_OPERATION_PRINT] = { "print", 2 },
+		[TABLE_OPERATION_OUTPUT] = { "output", 2 },
+
+		[TABLE_OPERATION_ALL] = { "all", 0 },
+		[TABLE_OPERATION_INVERT] = { "invert", 0 },
+		[TABLE_OPERATION_ROW] = { "row", 1 },
+		[TABLE_OPERATION_COLUMN] = { "column", 1 },
+		[TABLE_OPERATION_NO_ROWS] = { "no-rows", 0 },
+		[TABLE_OPERATION_NO_COLUMNS] = { "no-columns", 0 },
+		[TABLE_OPERATION_NONE] = { "none", 0 },
+		[TABLE_OPERATION_SET_ROW] = { "set-row", 1 },
+		[TABLE_OPERATION_SET_COLUMN] = { "set-column", 1 },
+
+		[TABLE_OPERATION_APPEND] = { "append", 0 },
+		[TABLE_OPERATION_APPEND_COLUMN] = { "append-column", 1 },
+
+		{ "quit", 0 },
+	};
+
+	const struct command *command = NULL;
+	const char *name, *arg, *end;
+
+	while (*cmd == ' ')
+		cmd++;
+	name = cmd;
+	if (*cmd != '\0') {
+		end = strchr(cmd, ' ');
+		if (end == NULL)
+			end = cmd + strlen(cmd);
+		for (size_t i = 0; i < ARRLEN(commands); i++) {
+			if (commands[i].name == NULL)
+				continue;
+			if (!strncmp(commands[i].name,
+						cmd, end - cmd) &&
+					commands[i].name[end - cmd]
+						== '\0') {
+				command = &commands[i];
+				break;
+			}
+		}
+	}
+	if (command == NULL) {
+		table_view_showerror(view, "command '%s' does not exist", name);
+		return -1;
+	}
+	if (!strcmp(command->name, "quit")) {
+		view->quit = true;
+		return 0;
+	}
+	arg = end;
+	while (*end == ' ')
+		end++;
+
 	if (command->arg == 1 && *arg == '\0') {
 		table_view_showerror(view, "command '%s' expected argument",
 				command->name);
-		return;
+		return -1;
 	}
 	if (command->arg == 2)
 		endwin();
 	table_dooperation(view->table, (enum table_operation)
-			(command - table_view_commands), arg);
+			(command - commands), arg);
 	if (command->arg == 2) {
-		printf("\nPress enter to continue...\n");
+		fprintf(stderr, "\nPress enter to continue...\n");
 		while (getchar() != '\n');
 	}
 	view->cursor.row = MIN(view->cursor.row, view->table->numActiveRows);
 	view->cursor.column = MIN(view->cursor.column,
 		view->table->numActiveColumns);
+	table_view_updatecolumns(view);
+	return 0;
 }
 
-static void table_view_type(TableView *view, int c)
+static inline void table_view_inserttext(TableView *view, char *buf, int count)
 {
-	if (view->cursor.capText == 0)
-		return;
+	if (view->cursor.capText < view->cursor.lenText + count) {
+		Utf8 *newText;
+
+		view->cursor.capText += count;
+		newText = table_view_realloc(view, view->cursor.text, view->cursor.capText);
+		if (newText == NULL)
+			return;
+		view->cursor.text = newText;
+	}
+	memmove(&view->cursor.text[view->cursor.index + count],
+		&view->cursor.text[view->cursor.index],
+		view->cursor.lenText - view->cursor.index);
+	memcpy(&view->cursor.text[view->cursor.index], buf, count);
+	view->cursor.index += count;
+	view->cursor.lenText += count;
+}
+
+static void table_view_typehotkey(TableView *view, int c)
+{
 	switch (c) {
 		size_t count;
 
 	case '\n':
 		if (view->mode == TABLE_VIEW_COMMAND) {
-			Utf8 *cmd;
-			Utf8 *end;
-			const struct table_view_command *command = NULL;
-
-			/* execute command */
 			if (view->cursor.capText == view->cursor.lenText) {
 				Utf8 *newText;
 
 				view->cursor.capText++;
-				newText = table_view_realloc(view, view->cursor.text,
+				newText = table_view_realloc(view,
+						view->cursor.text,
 						view->cursor.capText);
-				if (newText == NULL) {
-					table_view_showerror(view, "failed allocating: %s",
-							strerror(errno));
+				if (newText == NULL)
 					return;
-				}
 				view->cursor.text = newText;
 			}
 			view->cursor.text[view->cursor.lenText] = '\0';
-			cmd = view->cursor.text;
-			while (*cmd == ' ')
-				cmd++;
-			if (*cmd != '\0') {
-				end = strchr(cmd, ' ');
-				if (end == NULL)
-					end = cmd + strlen(cmd);
-				/* RB 80 */
-				for (size_t i = 0; i < ARRLEN(table_view_commands); i++) {
-					if (table_view_commands[i].name == NULL)
-						continue;
-					if (!strncmp(table_view_commands[i].name, cmd, end - cmd) &&
-							table_view_commands[i].name[end - cmd] == '\0') {
-						command = &table_view_commands[i];
-						break;
-					}
-				}
-			}
-			if (command != NULL) {
-				while (*end == ' ')
-					end++;
-				table_view_execute(view, command, end);
-			} else {
-				*end = '\0';
-				table_view_showerror(view,
-						"command '%s' does not exist",
-						cmd);
-			}
-
+			table_view_executecommand(view, view->cursor.text);
 			table_view_interruptcommand(view);
 		} else {
+			view->mode = TABLE_VIEW_NORMAL;
 			table_view_updatecell(view, view->cursor.row,
 					view->cursor.column);
 		}
@@ -526,7 +566,8 @@ static void table_view_type(TableView *view, int c)
 			view->cursor.lenText - count -
 				view->cursor.index);
 		view->cursor.lenText--;
-		goto update;
+		table_view_updatecursor(view);
+		break;
 	case KEY_DC:
 		if (view->cursor.index == view->cursor.lenText)
 			return;
@@ -536,41 +577,21 @@ static void table_view_type(TableView *view, int c)
 			&view->cursor.text[view->cursor.index + count],
 			view->cursor.lenText - view->cursor.index);
 		view->cursor.lenText--;
-		goto update;
+		table_view_updatecursor(view);
+		break;
 	}
-	if (c < 0x20 || c >= 0xff)
+}
+
+static void table_view_type(TableView *view, int c, char *buf)
+{
+	if (view->cursor.capText == 0)
 		return;
-	if (view->cursor.capText < view->cursor.lenText + 1) {
-		Utf8 *newText;
-
-		view->cursor.capText++;
-		newText = table_view_realloc(view, view->cursor.text, view->cursor.capText);
-		if (newText == NULL)
-			return;
-		view->cursor.text = newText;
-	}
-	memmove(&view->cursor.text[view->cursor.index + 1],
-		&view->cursor.text[view->cursor.index],
-		view->cursor.lenText - view->cursor.index);
-	view->cursor.text[view->cursor.index++] = c;
-	view->cursor.lenText++;
-
-	if (c & 0x80) {
-		size_t start;
-		size_t end;
-
-		/* make sure the utf8 sequence is complete */
-		for (start = end = view->cursor.index; start > 0; ) {
-			start--;
-			if (view->cursor.text[start] & 0xc0)
-				break;
-		}
-		if (end - start != utf8_determinate(view->cursor.text[start]))
-			return;
-	}
-
-update:
-	table_view_updatecursor(view);
+	if (buf != NULL)
+		table_view_inserttext(view, buf, c);
+	else if (c >= 0x20 && c < 0x7f)
+		table_view_inserttext(view, &(char) { c }, 1);
+	else
+		table_view_typehotkey(view, c);
 }
 
 static void table_view_scroll(TableView *view, int c)
@@ -637,22 +658,53 @@ static void table_view_scroll(TableView *view, int c)
 
 static void table_view_hotkey(TableView *view, int c)
 {
+	Table *const table = view->table;
 	switch (c) {
+	case 'd':
+		if (table->numActiveRows == 0)
+			break;
+		table->numActiveRows--;
+		memmove(&table->activeRows[view->cursor.row],
+			&table->activeRows[view->cursor.row + 1],
+			sizeof(*table->activeRows) *
+			(table->numActiveRows - view->cursor.row));
+		if (view->cursor.row > 0 &&
+				view->cursor.row == table->numActiveRows)
+			view->cursor.row--;
+		break;
+	case 'x':
+		if (table->numActiveColumns == 0)
+			break;
+		table->numActiveColumns--;
+		memmove(&table->activeColumns[view->cursor.column],
+			&table->activeColumns[view->cursor.column + 1],
+			sizeof(*table->activeColumns) *
+			(table->numActiveColumns - view->cursor.column));
+		if (view->cursor.column > 0 &&
+				view->cursor.column ==
+					table->numActiveColumns)
+			view->cursor.column--;
+		break;
+
 	case 'A':
-		table_parseline(view->table, "");
+		table_parseline(table, "");
 		view->cursor.column = 0;
-		view->table->activeRows[view->table->numActiveRows++] =
-			view->table->numRows - 1;
-		view->cursor.row = view->table->numActiveRows - 1;
+		table->activeRows[table->numActiveRows++] =
+			table->numRows - 1;
+		view->cursor.row = table->numActiveRows - 1;
 		table_view_updatetext(view);
 		break;
 
 	case '>':
+		if (table->numActiveColumns == 0)
+			break;
 		if (view->columnWidths[view->cursor.column] == (size_t) COLS)
 			break;
 		view->columnWidths[view->cursor.column]++;
 		break;
 	case '<':
+		if (table->numActiveColumns == 0)
+			break;
 		if (view->columnWidths[view->cursor.column] == 1)
 			break;
 		view->columnWidths[view->cursor.column]--;
@@ -669,6 +721,10 @@ static void table_view_hotkey(TableView *view, int c)
 	case 'i':
 		view->mode = TABLE_VIEW_INSERT;
 		break;
+
+	case 'q':
+		view->quit = true;
+		break;
 	}
 }
 
@@ -679,19 +735,28 @@ int table_view_show(TableView *view)
 	cbreak();
 	keypad(stdscr, true);
 
-	if (table_view_updatecolumns(view) < 0) {
-		endwin();
-		return -1;
-	}
+	table_view_updatecolumns(view);
 
 	refresh();
-	while (1) {
+	while (!view->quit) {
+		int c;
+
 		table_view_render(view);
-		const int c = getch();
-		if (view->mode == TABLE_VIEW_NORMAL && c == 'q')
-			break;
+		c = getch();
+		if (c >= 0x7f && c <= 0xff) {
+			char buf[8];
+			int det;
+
+			buf[0] = c;
+			det = (int) utf8_determinate(c); 
+			for (int i = 1; i < det; i++)
+				buf[i] = getch();
+			table_view_type(view, det, buf);
+			continue;
+		}
 		if (c == 0x1b) {
 			view->mode = TABLE_VIEW_NORMAL;
+			table_view_updatetext(view);
 			continue;
 		}
 
@@ -699,7 +764,7 @@ int table_view_show(TableView *view)
 		switch (view->mode) {
 		case TABLE_VIEW_INSERT:
 		case TABLE_VIEW_COMMAND:
-			table_view_type(view, c);
+			table_view_type(view, c, NULL);
 			break;
 		case TABLE_VIEW_NORMAL:
 			table_view_scroll(view, c);
@@ -714,5 +779,7 @@ int table_view_show(TableView *view)
 
 void table_view_uninit(TableView *view)
 {
-	(void) view;
+	if (view->cursor.capText > 0)
+		free(view->cursor.text);
+	free(view->columnWidths);
 }

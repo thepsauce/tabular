@@ -68,8 +68,7 @@ enum table_operation {
 	TABLE_OPERATION_SET_COLUMN,
 
 	TABLE_OPERATION_APPEND,
-	TABLE_OPERATION_UNDO,
-	TABLE_OPERATION_REDO,
+	TABLE_OPERATION_APPEND_COLUMN,
 
 	/* only used by table view */
 	TABLE_OPERATION_QUIT,
@@ -87,9 +86,7 @@ void table_invert(Table *table);
 void table_filterrows(Table *table, const Utf8 *filter);
 void table_filtercolumns(Table *table, const Utf8 *filter);
 
-void table_append(Table *table, const char *line);
-void table_undo(Table *table);
-void table_redo(Table *table);
+int table_appendcolumn(Table *table, const char *name);
 
 enum table_view_mode {
 	TABLE_VIEW_NORMAL,
@@ -116,6 +113,7 @@ typedef struct table_view {
 		size_t x;
 		size_t y;
 	} scroll;
+	bool quit;
 } TableView;
 
 int table_view_init(TableView *view, Table *table);

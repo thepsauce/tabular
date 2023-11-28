@@ -50,11 +50,8 @@ void table_dooperation(Table *table, enum table_operation operation, const void 
 	case TABLE_OPERATION_APPEND:
 		table_parseline(table, arg);
 		break;
-	case TABLE_OPERATION_UNDO:
-		table_undo(table);
-		break;
-	case TABLE_OPERATION_REDO:
-		table_redo(table);
+	case TABLE_OPERATION_APPEND_COLUMN:
+		table_appendcolumn(table, arg);
 		break;
 	default:
 		/* table view only operation */
@@ -83,9 +80,11 @@ void table_printactivecells(Table *table)
 
 void table_printinfo(Table *table)
 {
-	printf("%zu %zu\n", table->numColumns, table->numRows);
-	for (size_t x = 0; x < table->numColumns; x++)
-		printf("%s\n", table->columnNames[x]);
+	printf("%zu %zu\n", table->numActiveColumns, table->numActiveRows);
+	for (size_t i = 0; i < table->numActiveColumns; i++) {
+		const size_t column = table->activeColumns[i];
+		printf("%s\n", table->columnNames[column]);
+	}
 }
 
 int table_printbeautiful(Table *table)
@@ -217,12 +216,42 @@ void table_filtercolumns(Table *table, const Utf8 *filter)
 			table_activatecolumn(table, i);
 }
 
-void table_undo(Table *table)
+int table_appendcolumn(Table *table, const char *name)
 {
-	(void) table;
-}
+	char **newColumnNames;
+	size_t *newActiveColumns;
 
-void table_redo(Table *table)
-{
-	(void) table;
+	newColumnNames = realloc(table->columnNames,
+			sizeof(*table->columnNames) * (table->numColumns + 1));
+	if (newColumnNames == NULL)
+		return -1;
+	table->columnNames = newColumnNames;
+	table->columnNames[table->numColumns] = strdup(name);
+	if (table->columnNames[table->numColumns] == NULL)
+		return -1;
+	for (size_t i = 0; i < table->numRows; i++) {
+		char **newCells;
+
+		newCells = realloc(table->cells[i], sizeof(*table->cells[i]) *
+				(table->numColumns + 1));
+		if (newCells == NULL)
+			return -1;
+		table->cells[i] = newCells;
+		table->cells[i][table->numColumns] = strdup("");
+		if (table->cells[i][table->numColumns] == NULL) {
+			while (i > 0) {
+				i--;
+				free(table->cells[i][table->numColumns]);
+			}
+			return -1;
+		}
+	}
+	newActiveColumns = realloc(table->activeColumns,
+			sizeof(*table->activeColumns) *
+				(table->numColumns + 1));
+	if (newActiveColumns == NULL)
+		return -1;
+	table->activeColumns = newActiveColumns;
+	table->numColumns++;
+	return 0;
 }

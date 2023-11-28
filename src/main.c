@@ -28,7 +28,7 @@ void usage(int argc, char **argv)
 
 	fprintf(stderr, "\n3. Modifying:\n");
 	fprintf(stderr, "--append -a		Append a row\n");
-	fprintf(stderr, "--delete -d		Delete all selected rows and columns\n");
+	fprintf(stderr, "--append-column	Append a column\n");
 }
 
 int main(int argc, char **argv)
@@ -50,8 +50,7 @@ int main(int argc, char **argv)
 		[TABLE_OPERATION_SET_COLUMN] = { "set-column", 1, 0, 0 },
 
 		[TABLE_OPERATION_APPEND] = { "append", 1, 0, 'a' },
-		[TABLE_OPERATION_UNDO] = { "undo", 0, 0, 0 },
-		[TABLE_OPERATION_REDO] = { "redo", 0, 0, 0 },
+		[TABLE_OPERATION_APPEND_COLUMN] = { "append_column", 0, 0, 0 },
 		{ 0, 0, 0, 0 }
 	};
 	FILE *fp;
