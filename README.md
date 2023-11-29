@@ -37,7 +37,7 @@ View the table and make operations, write it to a file after quitting:
 Append a row:
 - `./tabular example.csv --append "i;am;new;here" --all --output append.csv`
 
-Tabular uses getopt, the above can be writtend as:
+Tabular uses getopt, the above can be written as:
 - `./tabular example.csv -d"i;am;new;here" -aoappend.csv`
 
 Append a column:
@@ -59,7 +59,7 @@ This option gives you a TUI interface to interact with the table. It is a mode e
 | <kbd>TAB</kbd> | Move to the next cell |
 | <kbd>BTAB</kbd> | Move to the previous cell |
 | <kbd>hjklHL</kbd> | Scroll the table |
-| <kbd>g</kbd>/<kbd>G></kbd> | Scroll to the first/last row |
+| <kbd>g</kbd>/<kbd>G</kbd> | Scroll to the first/last row |
 | <kbd>d</kbd> | Delete the current row |
 | <kbd>x</kbd> | Delete the current column |
 | <kbd>A</kbd> | Append an empty row |
@@ -74,6 +74,7 @@ This option gives you a TUI interface to interact with the table. It is a mode e
 | | |
 |-|-|
 | <kbd>LEFT</kbd> <kbd>RIGHT</kbd> | Move the cursor in the input field |
+| <kbd>BACKSPACE</kbd> | Delete previous character |
 | <kbd>DEL</kbd> | Delete character |
 | <kbd>CTRL</kbd>+<kbd>U</kbd> | Delete line |
 | <kbd>HOME</kbd> | Go to the beginning of the line |
