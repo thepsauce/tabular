@@ -15,6 +15,9 @@ void table_dooperation(Table *table, enum table_operation operation, const void 
 	case TABLE_OPERATION_OUTPUT:
 		table_writeout(table, arg);
 		break;
+	case TABLE_OPERATION_INPUT:
+		table_readin(table, arg);
+		break;
 
 	case TABLE_OPERATION_ALL:
 		table_activateall(table);
@@ -48,13 +51,11 @@ void table_dooperation(Table *table, enum table_operation operation, const void 
 		break;
 
 	case TABLE_OPERATION_APPEND:
-		table_parseline(table, arg);
+		table_parseline(table, arg == NULL ? "" : arg);
 		break;
 	case TABLE_OPERATION_APPEND_COLUMN:
-		table_appendcolumn(table, arg);
+		table_appendcolumn(table, arg == NULL ? "" : arg);
 		break;
-	default:
-		/* table view only operation */
 	}
 }
 
@@ -133,6 +134,44 @@ int table_writeout(Table *table, const char *path)
 	}
 	if (fp != stdout)
 		fclose(fp);
+	return 0;
+}
+
+int table_readin(Table *table, const char *path)
+{
+	FILE *fp;
+	char *line = NULL;
+	size_t capacity;
+	ssize_t count;
+	size_t lineIndex;
+
+	fp = fopen(path, "r");
+	if (fp == NULL) {
+		fprintf(stderr, "unable to open '%s': %s\n",
+				path, strerror(errno));
+		return -1;
+	}
+	lineIndex = 0;
+	while ((count = getline(&line, &capacity, fp)) >= 0) {
+		if (count <= 1)
+			continue;
+		line[count - 1] = '\0';
+		if (table_parseline(table, line) < 0) {
+			fprintf(stderr, " at line no. %zu\n%s\n",
+					lineIndex + 1, line);
+			if (table->atText != NULL) {
+				for (char *s = line; s != table->atText; s++)
+					fprintf(stderr, "~");
+				fprintf(stderr, "^\n");
+			}
+			free(line);
+			fclose(fp);
+			return -1;
+		}
+		lineIndex++;
+	}
+	free(line);
+	fclose(fp);
 	return 0;
 }
 

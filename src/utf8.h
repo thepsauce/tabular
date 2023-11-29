@@ -24,3 +24,4 @@ struct fitting {
  *  1: The text does not fit.
  */
 int utf8_getfitting(const Utf8 *utf8, size_t max, struct fitting *fitting);
+int utf8_getnfitting(const Utf8 *utf8, size_t n, struct fitting *fitting);

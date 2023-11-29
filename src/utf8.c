@@ -138,3 +138,24 @@ int utf8_getfitting(const Utf8 *utf8, size_t max, struct fitting *fit)
 	fit->end = (Utf8*) utf8;
 	return code;
 }
+
+int utf8_getnfitting(const Utf8 *utf8, size_t n, struct fitting *fit)
+{
+	size_t totalWidth, width;
+	size_t count;
+
+	fit->start = (Utf8*) utf8;
+	totalWidth = 0;
+	while (n > 0) {
+		width = utf8_widthfirst(utf8);
+		totalWidth += width;
+		count = utf8_determinate(*utf8);
+		if (count > n)
+			return -1;
+		n -= count;
+		utf8 += count;
+	}
+	fit->width = totalWidth;
+	fit->end = (Utf8*) utf8;
+	return 0;
+}

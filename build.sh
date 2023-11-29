@@ -38,9 +38,9 @@ do
 	fi
 done
 
-if $do_linking || [ ! -f build/$project_name ]
+if $do_linking || [ ! -f $project_name ]
 then
-	gcc $linker_flags $objects -o build/$project_name $linker_libs || exit
+	gcc $linker_flags $objects -o $project_name $linker_libs || exit
 fi
 
 while [ ! $# = 0 ]
@@ -82,12 +82,12 @@ then
 	then
 		program=$project_name
 	fi
-	gdb --args ./build/$program "$@"
+	gdb --args ./$program "$@"
 elif [ ! -z "$program" ]
 then
 	time_now=$(date "+%s %N")
 	read start_seconds start_nanoseconds <<< "$time_now"
-	./build/$program "$@"
+	./$program "$@"
 	exit_code=$?
 	time_now=$(date "+%s %N")
 	read end_seconds end_nanoseconds <<< "$time_now"

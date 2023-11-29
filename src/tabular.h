@@ -56,6 +56,7 @@ enum table_operation {
 	TABLE_OPERATION_VIEW,
 	TABLE_OPERATION_PRINT,
 	TABLE_OPERATION_OUTPUT,
+	TABLE_OPERATION_INPUT,
 
 	TABLE_OPERATION_ALL,
 	TABLE_OPERATION_INVERT,
@@ -69,9 +70,6 @@ enum table_operation {
 
 	TABLE_OPERATION_APPEND,
 	TABLE_OPERATION_APPEND_COLUMN,
-
-	/* only used by table view */
-	TABLE_OPERATION_QUIT,
 };
 
 void table_dooperation(Table *table, enum table_operation operation, const void *arg);
@@ -80,6 +78,7 @@ void table_printinfo(Table *table);
 int table_printbeautiful(Table *table);
 void table_printactivecells(Table *table);
 int table_writeout(Table *table, const char *path);
+int table_readin(Table *table, const char *path);
 
 void table_activateall(Table *table);
 void table_invert(Table *table);
