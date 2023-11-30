@@ -53,18 +53,20 @@ This option gives you a TUI interface to interact with the table. It is a mode e
 
 | | |
 |-|-|
-| <kbd>ARROW</kbd> | Move the cursor |
-| <kbd>HOME</kbd> | Move the cursor to the first column |
-| <kbd>END</kbd> | Move the cursor to the last column |
-| <kbd>TAB</kbd> | Move to the next cell |
-| <kbd>BTAB</kbd> | Move to the previous cell |
-| <kbd>hjklHL</kbd> | Scroll the table |
-| <kbd>g</kbd>/<kbd>G</kbd> | Scroll to the first/last row |
+| <kbd>ARROW KEYS</kbd> <kbd>hjkl</kbd> | Move the cursor |
+| <kbd>HOME</kbd> <kbd>0</kbd> | Move the cursor to the first column |
+| <kbd>END</kbd> <kbd>$</kbd> | Move the cursor to the last column |
+| <kbd>g</kbd>/<kbd>G</kbd> | Move the cursor to the first/last row |
+| <kbd>TAB</kbd> <kbd>SPACE</kbd> | Move to the next cell |
+| <kbd>BTAB</kbd> <kbd>BACKSPACE</kbd> | Move to the previous cell |
 | <kbd>d</kbd> | Delete the current row |
 | <kbd>x</kbd> | Delete the current column |
 | <kbd>A</kbd> | Append an empty row |
+| <kbd>u</kbd> | Undo |
+| <kbd>CTRL+R</kbd> | Redo |
 | <kbd>></kbd> | Increase the column width |
 | <kbd><</kbd> | Decrease the column width |
+| <kbd>r</kbd> | Update all column widths |
 | <kbd>i</kbd> | Go to insert mode |
 | <kbd>:</kbd> | Go to command mode |
 | <kbd>Q</kbd> | Quit |
@@ -85,8 +87,12 @@ This option gives you a TUI interface to interact with the table. It is a mode e
 ### Command mode
 
 Same as insert mode but pressing enter will run the command, these are all commands:
-- info, print, output, input
-- all, invert, row, column, no-rows, no-columns, none, set-row, set-column
-- append, append-column
+- i\[nfo\], p\[rint\], w\[rite\] (output), r\[ead\] (input)
+- all [A], all-rows [Ar], all-cols [Ac]
+- invert [I], invert-rows [Ir], invert-cols [Ic]
+- none [N], no-rows [Nr], no-cols [Nc]
+- r\[ow\], c\[ol\], set-row [sr], set-col [sc]
+- a\[ppend\], append-col [ac]
+- undo [U], redo [R]
 
 They have a one to one correspondence to the program options.

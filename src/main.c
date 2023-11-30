@@ -16,20 +16,27 @@ void usage(int argc, char **argv)
 
 	fprintf(stderr, "\n2. Selecting:\n");
 	fprintf(stderr, "Note: At the beginning, nothing is selected.\n");
-	fprintf(stderr, "--column \"*\" --row \"*\"\n");
+	fprintf(stderr, "--col \"*\" --row \"*\"\n");
 	fprintf(stderr, "--all -a	Select all rows and columns\n");
+	fprintf(stderr, "--all-rows	Select all rows and columns\n");
+	fprintf(stderr, "--all-cols	Select all rows and columns\n");
 	fprintf(stderr, "--invert	Inverts the selection\n");
+	fprintf(stderr, "--invert-row	Inverts the selected rows\n");
+	fprintf(stderr, "--invert-cols	Inverts the selected columns\n");
+	fprintf(stderr, "--none		Deselect everything\n");
+	fprintf(stderr, "--no-rows	Deselect all rows\n");
+	fprintf(stderr, "--no-cols	Deselect all columns\n\n");
+
 	fprintf(stderr, "--row -r	Select a row\n");
 	fprintf(stderr, "--column -c	Select a column\n");
-	fprintf(stderr, "--no-rows	Deselect all rows\n");
-	fprintf(stderr, "--no-columns	Deselect all columns\n");
-	fprintf(stderr, "--none		Deselect everything\n");
 	fprintf(stderr, "--set-row	Combination of --no-rows and --row\n");
-	fprintf(stderr, "--set-column	Combination of --no-columns and --column\n");
+	fprintf(stderr, "--set-col	Combination of --no-columns and --column\n");
+	fprintf(stderr, "--undo		Undo a selection\n");
+	fprintf(stderr, "--redo		Redo a selection\n");
 
 	fprintf(stderr, "\n3. Modifying:\n");
-	fprintf(stderr, "--append		Append a row\n");
-	fprintf(stderr, "--append-column	Append a column\n");
+	fprintf(stderr, "--append	Append a row\n");
+	fprintf(stderr, "--append-col	Append a column\n");
 }
 
 int main(int argc, char **argv)
@@ -42,17 +49,25 @@ int main(int argc, char **argv)
 		[TABLE_OPERATION_INPUT] = { "input", 1, 0, 'i' },
 
 		[TABLE_OPERATION_ALL] = { "all", 0, 0, 'a' },
+		[TABLE_OPERATION_ALL_ROWS] = { "all-rows", 0, 0, 0 },
+		[TABLE_OPERATION_ALL_COLS] = { "all-columns", 0, 0, 0 },
 		[TABLE_OPERATION_INVERT] = { "invert", 0, 0, 0 },
-		[TABLE_OPERATION_ROW] = { "row", 1, 0, 'r' },
-		[TABLE_OPERATION_COLUMN] = { "column", 1, 0, 'c' },
-		[TABLE_OPERATION_NO_ROWS] = { "no-rows", 0, 0, 0 },
-		[TABLE_OPERATION_NO_COLUMNS] = { "no-columns", 0, 0, 0 },
+		[TABLE_OPERATION_INVERT_ROWS] = { "invert-rows", 0, 0, 0 },
+		[TABLE_OPERATION_INVERT_COLS] = { "invert-cols", 0, 0, 0 },
 		[TABLE_OPERATION_NONE] = { "none", 0, 0, 0 },
+		[TABLE_OPERATION_NO_ROWS] = { "no-rows", 0, 0, 0 },
+		[TABLE_OPERATION_NO_COLS] = { "no-cols", 0, 0, 0 },
+
+		[TABLE_OPERATION_ROW] = { "row", 1, 0, 'r' },
+		[TABLE_OPERATION_COL] = { "col", 1, 0, 'c' },
 		[TABLE_OPERATION_SET_ROW] = { "set-row", 1, 0, 0 },
-		[TABLE_OPERATION_SET_COLUMN] = { "set-column", 1, 0, 0 },
+		[TABLE_OPERATION_SET_COL] = { "set-col", 1, 0, 0 },
 
 		[TABLE_OPERATION_APPEND] = { "append", 2, 0, 'd' },
-		[TABLE_OPERATION_APPEND_COLUMN] = { "append_column", 2, 0, 'n' },
+		[TABLE_OPERATION_APPEND_COL] = { "append-col", 2, 0, 'n' },
+
+		[TABLE_OPERATION_UNDO] = { "undo", 0, 0, 0 },
+		[TABLE_OPERATION_REDO] = { "redo", 0, 0, 0 },
 		{ 0, 0, 0, 0 }
 	};
 	Table table;

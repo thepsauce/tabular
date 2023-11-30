@@ -71,25 +71,25 @@ err:
 	return NULL;
 }
 
-static char **table_parse_row(Table *table, const char *text, size_t *pNumColumns)
+static char **table_parse_row(Table *table, const char *text, size_t *pNumCols)
 {
 	char *str;
 	char **row;
 	char **newRow;
-	size_t numColumns;
+	size_t numCols;
 
 	row = NULL;
-	numColumns = 0;
+	numCols = 0;
 	while (1) {
 		str = table_parse_string(table, text, &text);
 		if (str == NULL)
 			goto err;
 		newRow = table_realloc(table, row, sizeof(*row) *
-				(numColumns + 1));
+				(numCols + 1));
 		if (newRow == NULL)
 			goto err;
 		row = newRow;
-		row[numColumns++] = str;
+		row[numCols++] = str;
 		if (*text == '\0')
 			break;
 		if (*text != ';' && *text != ',' && *text != '\t') {
@@ -99,11 +99,11 @@ static char **table_parse_row(Table *table, const char *text, size_t *pNumColumn
 		}
 		text++;
 	}
-	*pNumColumns = numColumns;
+	*pNumCols = numCols;
 	return row;
 
 err:
-	for (size_t x = 0; x < numColumns; x++)
+	for (size_t x = 0; x < numCols; x++)
 		free(row[x]);
 	free(row);
 	return NULL;
@@ -112,38 +112,42 @@ err:
 int table_parseline(Table *table, const char *text)
 {
 	char **row;
-	size_t numColumns;
+	size_t numCols;
 	char ***newCells;
 	size_t *newActiveRows;
 
-	row = table_parse_row(table, text, &numColumns);
+	row = table_parse_row(table, text, &numCols);
 	if (row == NULL)
 		return -1;
-	if (table->columnNames == NULL) {
-		table->columnNames = row;
-		table->numColumns = numColumns;
-		table->activeColumns = malloc(sizeof(*table->activeColumns) *
-				table->numColumns);
-		if (table->activeColumns == NULL)
+	if (table->colNames == NULL) {
+		table->colNames = row;
+		table->numCols = numCols;
+		table->activeCols = malloc(sizeof(*table->activeCols) *
+				table->numCols);
+		if (table->activeCols == NULL)
+			goto err;
+		table->newActiveCols = malloc(sizeof(*table->newActiveCols) *
+				table->numCols);
+		if (table->newActiveCols == NULL)
 			goto err;
 		return 0;
 	}
-	if (numColumns > table->numColumns) {
-		fprintf(stderr, "error: too many columns (%zu vs %zu)",
-			numColumns, table->numColumns);
+	if (numCols > table->numCols) {
+		fprintf(stderr, "error: too many cols (%zu vs %zu)",
+			numCols, table->numCols);
 		goto err;
 	}
-	if (numColumns < table->numColumns) {
+	if (numCols < table->numCols) {
 		char **paddedRow;
 
-		paddedRow = realloc(row, sizeof(*row) * table->numColumns);
+		paddedRow = realloc(row, sizeof(*row) * table->numCols);
 		if (paddedRow == NULL)
 			goto err;
 		row = paddedRow;
 		/* setting all to NULL to never get free(trashpointer) */
-		for (size_t i = numColumns; i < table->numColumns; i++)
+		for (size_t i = numCols; i < table->numCols; i++)
 			row[i] = NULL;
-		for (size_t i = numColumns; i < table->numColumns; i++) {
+		for (size_t i = numCols; i < table->numCols; i++) {
 			row[i] = malloc(1);
 			if (row[i] == NULL)
 				goto err;
@@ -162,27 +166,33 @@ int table_parseline(Table *table, const char *text)
 	if (newActiveRows == NULL)
 		goto err;
 	table->activeRows = newActiveRows;
+
+	newActiveRows = realloc(table->newActiveRows,
+			sizeof(*table->newActiveRows) * table->numRows);
+	if (newActiveRows == NULL)
+		goto err;
+	table->newActiveRows = newActiveRows;
 	return 0;
 
 err:
-	for (size_t x = 0; x < numColumns; x++)
-		free(row[x]);
-	free(row);
+	table_uninit(table);
 	return -1;
 }
 
 void table_uninit(Table *table)
 {
-	for (size_t x = 0; x < table->numColumns; x++)
-		free(table->columnNames[x]);
+	for (size_t x = 0; x < table->numCols; x++)
+		free(table->colNames[x]);
 	for (size_t y = 0; y < table->numRows; y++) {
-		for (size_t x = 0; x < table->numColumns; x++)
+		for (size_t x = 0; x < table->numCols; x++)
 			free(table->cells[y][x]);
 		free(table->cells[y]);
 	}
-	free(table->columnNames);
+	free(table->colNames);
 	free(table->cells);
 	free(table->activeRows);
-	free(table->activeColumns);
+	free(table->activeCols);
+	free(table->newActiveRows);
+	free(table->newActiveCols);
 }
 
