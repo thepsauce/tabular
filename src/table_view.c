@@ -126,10 +126,10 @@ static void table_view_updatecursor(TableView *view)
 	}
 	maxx = view->colWidths[view->cursor.col];
 
-	if (begx + maxx < view->scroll.x)
-		view->scroll.x = begx + maxx;
-	else if (begx > view->scroll.x + (COLS - 1))
-		view->scroll.x = begx - (COLS - 1);
+	if (begx < view->scroll.x)
+		view->scroll.x = begx;
+	else if (begx + maxx > view->scroll.x + (COLS - 1))
+		view->scroll.x = begx + maxx - (COLS - 1);
 
 	if (view->cursor.row < view->scroll.y)
 		view->scroll.y = view->cursor.row;

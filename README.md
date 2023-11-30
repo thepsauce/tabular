@@ -94,5 +94,6 @@ Same as insert mode but pressing enter will run the command, these are all comma
 - r\[ow\], c\[ol\], set-row [sr], set-col [sc]
 - a\[ppend\], append-col [ac]
 - undo [U], redo [R]
+- q\[uit\]
 
 They have a one to one correspondence to the program options.
