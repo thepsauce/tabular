@@ -13,24 +13,51 @@ size_t utf8_determinate(Utf8 u)
 
 bool utf8_match(const Utf8 *pattern, const Utf8 *text)
 {
-	while (*pattern != '\0' || *text != '\0') {
-		if (*pattern != *text) {
-			if (*pattern == '*') {
-				do
-					pattern++;
-				while (*pattern == '*');
-				if (*pattern == '\0')
-					return true;
-				while (*text != '\0') {
-					if (utf8_match(pattern, text))
-						return true;
-					text++;
-				}
+	bool escaped = false;
+	size_t idxText, lastText, lenText;
+	size_t lastPattern;
+	size_t idxPattern;
+	size_t lenPattern;
+
+	lenText = strlen(text);
+repeat:
+	idxText = 0;
+	idxPattern = 0;
+	lenPattern = 0;
+	lastPattern = SIZE_MAX;
+	while (pattern[lenPattern] != '\0' &&
+			(pattern[lenPattern] != '|' || escaped)) {
+		if (pattern[lenPattern] == '\\')
+			escaped = !escaped;
+		else
+			escaped = false;
+		lenPattern++;
+	}
+
+	while (idxPattern != lenPattern || idxText != lenText) {
+		escaped = false;
+		if (pattern[idxPattern] == '\\') {
+			escaped = true;
+			idxPattern++;
+		}
+		if (pattern[idxPattern] == '*' && !escaped) {
+			while (pattern[idxPattern] == '*')
+				idxPattern++;
+			lastPattern = idxPattern;
+			lastText = idxText;
+		} else if (pattern[idxPattern] == text[idxText] && idxPattern != lenPattern) {
+			idxPattern++;
+			idxText++;
+		} else if (lastPattern != SIZE_MAX && idxText != lenText) {
+			idxPattern = lastPattern;
+			idxText = ++lastText;
+		} else {
+			if (pattern[lenPattern] == '|') {
+				pattern += lenPattern + 1;
+				goto repeat;
 			}
 			return false;
 		}
-		pattern++;
-		text++;
 	}
 	return true;
 }

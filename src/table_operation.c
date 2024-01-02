@@ -41,37 +41,60 @@ getdiff(size_t *a, size_t na, size_t *b, size_t nb,
 		struct table_diff_part **pc, size_t *pnc)
 {
 	struct table_diff_part *c, *sc;
-	size_t nc;
+	size_t nc = 0;
+	bool inBoth;
 
-	c = malloc(sizeof(*c) * na);
+	c = malloc(sizeof(*c) * (na + nb));
 	if (c == NULL)
-		return NULL;
-	nc = 0;
-	for (size_t i = 0, j; i < na; i++) {
-		for (j = 0; j < nb; j++)
-			if (a[i] == b[i])
+		goto no_diff;
+	for (size_t i = 0; i < na; i++) {
+		inBoth = false;
+		for (size_t j = 0; i < nb; j++)
+			if (a[i] == b[j]) {
+				inBoth = true;
 				break;
-		if (j == nb) {
+			}
+		if (!inBoth) {
 			c[nc].index = i;
 			c[nc].value = a[i];
 			nc++;
 		}
 	}
-	sc = realloc(c, sizeof(*c) * nc);
-	if (sc == NULL)
-		return NULL;
+
+	for (size_t i = 0; i < nb; i++) {
+		inBoth = false;
+		for (size_t j = 0; i < na; j++)
+			if (b[i] == a[j]) {
+				inBoth = true;
+				break;
+			}
+		if (!inBoth) {
+			c[nc].index = i;
+			c[nc].value = b[i];
+			nc++;
+		}
+	}
+	if (nc == 0 || (sc = realloc(c, sizeof(*c) * nc))) {
+		free(c);
+		goto no_diff;
+	}
 	*pc = sc;
 	*pnc = nc;
 	return sc;
+
+no_diff:
+	*pc = NULL;
+	*pnc = 0;
+	return NULL;
 }
 
 void table_applydiff(Table *table, const struct table_diff *diff)
 {
 	bool found;
 
-	for (size_t i = 0, j; i < diff->numChangedRows; i++) {
+	for (size_t i = 0; i < diff->numChangedRows; i++) {
 		found = false;
-		for (j = 0; j < table->numActiveRows; j++)
+		for (size_t j = 0; j < table->numActiveRows; j++)
 			if (diff->rowDiff[i].row == table->activeRows[j]) {
 				table->numActiveRows--;
 				memmove(&table->activeRows[j],
@@ -92,9 +115,9 @@ void table_applydiff(Table *table, const struct table_diff *diff)
 		}
 	}
 
-	for (size_t i = 0, j; i < diff->numChangedCols; i++) {
+	for (size_t i = 0; i < diff->numChangedCols; i++) {
 		found = false;
-		for (j = 0; j < table->numActiveCols; j++)
+		for (size_t j = 0; j < table->numActiveCols; j++)
 			if (diff->colDiff[i].col == table->activeCols[j]) {
 				table->numActiveCols--;
 				memmove(&table->activeCols[j],
@@ -120,6 +143,9 @@ int table_appendhistory(Table *table, const struct table_diff *diff)
 {
 	struct table_diff *newHistory;
 
+	if (diff->numChangedRows == 0 && diff->numChangedCols == 0)
+		return 1;
+
 	for (size_t i = table->indexHistory; i < table->numHistory; i++) {
 		free(table->history[i].rowDiff);
 		free(table->history[i].colDiff);
@@ -142,18 +168,14 @@ int table_generatediff(Table *table)
 {
 	struct table_diff diff;
 
-	if (getdiff(table->newActiveRows, table->newNumActiveRows,
+	getdiff(table->newActiveRows, table->newNumActiveRows,
 			table->activeRows, table->numActiveRows,
 			(struct table_diff_part**) &diff.rowDiff,
-			&diff.numChangedRows) == NULL)
-		return -1;
-	if (getdiff(table->newActiveCols, table->newNumActiveCols,
+			&diff.numChangedRows);
+	getdiff(table->newActiveCols, table->newNumActiveCols,
 			table->activeCols, table->numActiveCols,
 			(struct table_diff_part**) &diff.colDiff,
-			&diff.numChangedCols) == NULL) {
-		free(diff.rowDiff);
-		return -1;
-	}
+			&diff.numChangedCols);
 
 	memcpy(table->activeRows, table->newActiveRows,
 		sizeof(*table->newActiveRows) * table->newNumActiveRows);

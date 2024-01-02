@@ -7,6 +7,8 @@ void usage(int argc, char **argv)
 	fprintf(stderr, "usage: %s [file name] [options]\n",
 			argv[0]);
 	fprintf(stderr, "Options:\n");
+	fprintf(stderr, "--usage --help -h Shows this help\n");
+
 	fprintf(stderr, "1. Status:\n");
 	fprintf(stderr, "--info		Show table information (size and column names)\n");
 	fprintf(stderr, "--view -v	View all selected cells in a terminal user interface\n");
